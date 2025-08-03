@@ -1,0 +1,24 @@
+# config/subdomain.yaml
+execution_mode: sequential
+tools:
+  - name: subfinder
+    description: Subdomain discovery
+    command: subfinder
+    flags:
+      - flag: "-d"
+        option: "Domain"
+        required: true
+      - flag: "-o"
+        option: "Output"
+        default: "subfinder_output.txt"
+        
+  - name: httpxbb
+    description: httpx for probing discovered subdomains
+    command: httpxbb
+    flags:
+      - flag: "-l"  
+        option: "Input"
+        default: "subfinder_output.txt"
+      - flag: "-o"
+        option: "Output"
+        default: "httpx_output.txt"

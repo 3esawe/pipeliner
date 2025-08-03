@@ -1,0 +1,25 @@
+# config/subdomain_concurrent.yaml
+execution_mode: concurrent
+tools:
+  - name: subfinder
+    description: Subdomain discovery
+    command: subfinder
+    flags:
+      - flag: "-d"
+        option: "Domain"
+        required: true
+      - flag: "-o"
+        option: "Output"
+        default: "subfinder_output.txt"
+        
+  - name: amass
+    description: Subdomain enumeration
+    command: amass
+    flags:
+      - flag: "enum"
+        is_positional: true
+      - flag: "-d"
+        option: "Domain"
+      - flag: "-o"
+        option: "Output"
+        default: "amass_output.txt"

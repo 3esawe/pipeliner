@@ -1,0 +1,28 @@
+the tool should be defined as a yaml file with
+
+toolName
+args
+
+
+and chain of tools can also be defined as a json file which is an option for a user to create and config
+
+similar to this 
+
+```
+# config/chains/subdomain.yaml
+name: subdomain_enum
+tools:
+  - amass
+  - subfinder
+output_handlers:
+  - type: file
+    path: /results/subdomains.txt
+  - type: next_chain
+    chain: http_probe
+```
+
+each tool should have a wrapper around it implemeted in golang
+and the wrapper should be able to read the config file and execute the tool with the provided arguments
+
+the project will start with cli tool with tool execttion first and then we can add the chain execution later with chain 
+being in mind at development phases
