@@ -1,0 +1,25 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch Pipeliner with subdomain_alive",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${workspaceFolder}/cmd/pipeliner/main.go",
+            "args": ["scan", "-m","subdomain_alive", "-d", "deepseek.com"],
+            "env": {},
+            "showLog": true,
+            "cwd": "${workspaceFolder}",
+            "buildFlags": "",
+            "output": "${workspaceFolder}/bin/pipeliner"
+        },
+        {
+            "name": "Launch Current File",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${file}"
+        }
+    ]
+}

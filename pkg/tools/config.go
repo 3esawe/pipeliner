@@ -5,13 +5,18 @@ import (
 	"reflect"
 )
 
+type Options struct {
+	ScanType string
+	Domain   string
+}
+
 type FlagConfig struct {
-	Flag         string `yaml:"flag"`
-	Option       string `yaml:"option"`
-	Required     bool   `yaml:"required"`
-	Default      string `yaml:"default"`
-	IsBoolean    bool   `yaml:"is_boolean"`
-	IsPositional bool   `yaml:"is_positional"`
+	Flag         string `yaml:"flag" mapstructure:"flag"`
+	Option       string `yaml:"option" mapstructure:"option"`
+	Required     bool   `yaml:"required" mapstructure:"required"`
+	Default      string `yaml:"default" mapstructure:"default"`
+	IsBoolean    bool   `yaml:"is_boolean" mapstructure:"is_boolean"`
+	IsPositional bool   `yaml:"is_positional" mapstructure:"is_positional"`
 }
 
 type ToolConfig struct {
@@ -44,16 +49,20 @@ func (tc *ToolConfig) BuildArgs(options interface{}) ([]string, error) {
 		// Skip flags with empty option names (pure flags)
 		if flag.Option == "" {
 			if flag.Flag != "" {
-				args = append(args, flag.Flag)
+				args = append(args, flag.Flag, flag.Default) // this  is to handle flags that are just flags without options
 			}
 			continue
 		}
 
 		fieldValue := optionsValue.FieldByName(flag.Option)
 		if !fieldValue.IsValid() {
-			return nil, fmt.Errorf("field '%s' not found in options", flag.Option)
+			if flag.Default != "" {
+				args = append(args, flag.Flag, flag.Default)
+				continue
+			} else {
+				return nil, fmt.Errorf("field '%s' not found in options", flag.Option)
+			}
 		}
-
 		value := fmt.Sprintf("%v", fieldValue.Interface())
 
 		if flag.IsBoolean {
