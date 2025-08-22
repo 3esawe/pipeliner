@@ -126,7 +126,7 @@ func initHooks() {
 	tools.RegisterHookForStage(tools.StageSubdomain, &hooks.CombineOutput{})
 	tools.RegisterHookForStage(tools.StageVuln, &hooks.NotifierHook{
 		Config: hooks.NotifierHookConfig{
-			Filename: "httpx_output.txt",
+			Filename: "nuclei_output.txt",
 		},
 	})
 }

@@ -86,9 +86,6 @@ func (e *PiplinerEngine) PrepareScan(options *tools.Options) {
 		e.config = utils.NewViperConfig(e.options.ScanType)
 		utils.CreateAndChangeScanDirectory(e.options.ScanType, e.options.Domain)
 
-		// e.knownDomainsMu.Lock()
-		// e.knownDomains[strings.ToLower(e.options.Domain)] = true
-		// e.knownDomainsMu.Unlock()
 		go output.WatchDirectory(e.ctx)
 	}
 }
@@ -103,10 +100,6 @@ func (e *PiplinerEngine) Run() error {
 		return fmt.Errorf("tool execution failed")
 	}
 
-	// We start the periodic scan after the initial scan is complete
-	// We should start to watch for extra domains after the scan is already started
-	// e.processInitialScan()
-	// e.firstScanComplete = true
 	for {
 		select {
 		case <-e.ctx.Done():
@@ -118,7 +111,6 @@ func (e *PiplinerEngine) Run() error {
 				log.Errorf("Pipeline Engine stopped due to error %v or context being cancelled", err)
 				return fmt.Errorf("tool execution failed")
 			}
-			// e.detectNewDomains()
 		}
 	}
 
@@ -187,86 +179,3 @@ func (e *PiplinerEngine) createToolInstances(toolConfigs []tools.ToolConfig) ([]
 func (e *PiplinerEngine) GetOptions() *tools.Options {
 	return e.options
 }
-
-// func (e *PiplinerEngine) processInitialScan() {
-
-// 	domainFiles := e.findDomainFiles()
-// 	for _, file := range domainFiles {
-// 		e.processDomainFile(file, false)
-// 	}
-// }
-
-// func (e *PiplinerEngine) detectNewDomains() {
-// 	if e.notifier == nil || !e.firstScanComplete {
-// 		return
-// 	}
-
-// 	domainFiles := e.findDomainFiles()
-// 	for _, file := range domainFiles {
-// 		e.processDomainFile(file, true)
-// 	}
-// }
-
-// func (e *PiplinerEngine) findDomainFiles() []string {
-// 	files := make([]string, 0)
-// 	for _, pattern := range e.domainPatterns {
-// 		matches, _ := filepath.Glob(pattern) // Uses current directory
-// 		files = append(files, matches...)
-// 	}
-// 	return files
-// }
-
-// func (e *PiplinerEngine) processDomainFile(filePath string, notify bool) {
-// 	file, err := os.Open(filePath)
-// 	if err != nil {
-// 		log.Debugf("Error opening domain file %s: %v", filePath, err)
-// 		return
-// 	}
-// 	defer file.Close()
-
-// 	// Collect new domains to notify
-// 	var newDomains []string
-
-// 	scanner := bufio.NewScanner(file)
-// 	for scanner.Scan() {
-// 		domain := strings.TrimSpace(scanner.Text())
-// 		if domain == "" || strings.HasPrefix(domain, "#") {
-// 			continue // Skip empty lines and comments
-// 		}
-// 		if !isValidDomain(domain) {
-// 			log.Debugf("Skipping invalid domain: %s", domain)
-// 			continue
-// 		}
-
-// 		// Simple domain validation
-// 		normalized := strings.ToLower(domain)
-
-// 		e.knownDomainsMu.Lock()
-// 		if !e.knownDomains[normalized] {
-// 			e.knownDomains[normalized] = true
-// 			if notify {
-// 				newDomains = append(newDomains, normalized)
-// 			}
-// 		}
-// 		e.knownDomainsMu.Unlock()
-
-// 	}
-
-// 	// Send notifications outside the lock
-// 	for _, domain := range newDomains {
-// 		go func(d string) {
-// 			if err := e.notifier.SendDomainAddedMessage(d); err != nil {
-// 				log.Errorf("Failed to send Discord notification: %v", err)
-// 			}
-// 		}(domain)
-// 	}
-
-// 	if err := scanner.Err(); err != nil {
-// 		log.Debugf("Error scanning domain file %s: %v", filePath, err)
-// 	}
-// }
-
-// func isValidDomain(domain string) bool {
-// 	// Must contain a dot and no spaces
-// 	return strings.Contains(domain, ".") && !strings.ContainsAny(domain, " \t\n\r")
-// }
