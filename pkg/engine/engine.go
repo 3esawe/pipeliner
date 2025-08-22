@@ -30,8 +30,6 @@ type PiplinerEngine struct {
 	EnginePiplinerOpts
 	knownDomains   map[string]bool
 	knownDomainsMu sync.Mutex
-	domainPatterns []string
-	// firstScanComplete bool
 }
 
 func NewPiplinerEngine(ctx context.Context, opts ...OptFunc) *PiplinerEngine {
@@ -47,12 +45,9 @@ func NewPiplinerEngine(ctx context.Context, opts ...OptFunc) *PiplinerEngine {
 		opt(&o)
 	}
 
-	patterns := []string{"*domain*", "*subdomain_*", "*host*", "*subfinder*"}
-
 	return &PiplinerEngine{
 		EnginePiplinerOpts: o,
 		knownDomains:       make(map[string]bool),
-		domainPatterns:     patterns,
 	}
 }
 
