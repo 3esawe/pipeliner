@@ -8,7 +8,6 @@ import (
 	"pipeliner/internal/utils"
 	output "pipeliner/pkg/io_utils"
 	"pipeliner/pkg/tools"
-	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -28,8 +27,6 @@ type OptFunc func(*EnginePiplinerOpts)
 
 type PiplinerEngine struct {
 	EnginePiplinerOpts
-	knownDomains   map[string]bool
-	knownDomainsMu sync.Mutex
 }
 
 func NewPiplinerEngine(ctx context.Context, opts ...OptFunc) *PiplinerEngine {
@@ -47,7 +44,6 @@ func NewPiplinerEngine(ctx context.Context, opts ...OptFunc) *PiplinerEngine {
 
 	return &PiplinerEngine{
 		EnginePiplinerOpts: o,
-		knownDomains:       make(map[string]bool),
 	}
 }
 
