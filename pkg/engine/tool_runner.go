@@ -11,9 +11,9 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type CommandRunner struct{}
+type SimpleRunner struct{}
 
-func (r *CommandRunner) Run(
+func (r *SimpleRunner) Run(
 	ctx context.Context,
 	command string,
 	args []string,
@@ -22,14 +22,15 @@ func (r *CommandRunner) Run(
 
 	log.Infof("Executing: %s %v", finalCommand, finalArgs)
 	cmd := exec.CommandContext(ctx, finalCommand, finalArgs...)
-	output, err := cmd.CombinedOutput()
+	err := cmd.Run()
 	if err != nil {
-		return fmt.Errorf("execution failed: %w\nOutput: %s", err, output)
+		log.Errorf("execution failed: %v", err)
+		return fmt.Errorf("execution failed: %w", err)
 	}
 	return nil
 }
 
-func (r *CommandRunner) resolveInterpreter(command string, args []string) (string, []string) {
+func (r *SimpleRunner) resolveInterpreter(command string, args []string) (string, []string) {
 	if strings.Contains(command, ".") {
 		ext := filepath.Ext(command)
 

@@ -4,8 +4,10 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"pipeliner/internal/notification"
 	"pipeliner/pkg/engine"
-	"pipeliner/pkg/tools"
+	hooks "pipeliner/pkg/hooks"
+	tools "pipeliner/pkg/tools"
 	"syscall"
 
 	log "github.com/sirupsen/logrus"
@@ -13,9 +15,10 @@ import (
 )
 
 var (
-	module  string
-	domain  string
-	verbose bool
+	module        string
+	domain        string
+	verbose       bool
+	discordClient *notification.NotificationClient
 )
 
 var rootCmd = &cobra.Command{
@@ -49,10 +52,12 @@ var scanCmd = &cobra.Command{
 			cancel()
 		}()
 
-		engine := engine.NewEngine(ctx)
+		engine := engine.NewPiplinerEngine(ctx,
+			engine.WithPeriodic(1),
+			engine.WithNotificationClient(discordClient))
 
 		// Set options directly
-		engine.SetOptions(&tools.Options{
+		engine.PrepareScan(&tools.Options{
 			ScanType: module,
 			Domain:   domain,
 		})
@@ -65,11 +70,13 @@ var scanCmd = &cobra.Command{
 		select {
 		case err := <-errChan:
 			if err != nil {
+				log.Errorf("Main error: %v", err)
 				return err
 			}
 		case <-ctx.Done():
 			err := <-errChan
 			if err != nil {
+				log.Errorf("Main error: %v", err)
 				return err
 			}
 		}
@@ -94,7 +101,32 @@ func init() {
 }
 
 func main() {
+	initHooks()
+	// Initialize Discord client
+	var discordClient *notification.NotificationClient
+	if token := os.Getenv("DISCORD_TOKEN"); token != "" {
+		var err error
+		discordClient, err = notification.NewNotificationClient()
+		if err != nil {
+			log.Warnf("Failed to initialize Discord client: %v", err)
+		} else {
+			defer discordClient.Close()
+			log.Info("Discord notifications enabled")
+		}
+	} else {
+		log.Info("DISCORD_TOKEN not set - Discord notifications disabled")
+	}
+
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
+}
+
+func initHooks() {
+	tools.RegisterHookForStage(tools.StageSubdomain, &hooks.CombineOutput{})
+	tools.RegisterHookForStage(tools.StageVuln, &hooks.NotifierHook{
+		Config: hooks.NotifierHookConfig{
+			Filename: "httpx_output.txt",
+		},
+	})
 }

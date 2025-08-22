@@ -26,3 +26,9 @@ and the wrapper should be able to read the config file and execute the tool with
 
 the project will start with cli tool with tool execttion first and then we can add the chain execution later with chain 
 being in mind at development phases
+
+
+we have two issues one is overwriting the file content from duplicate if a process is crashed and the other one is handling the periodic scan to create a new file_for the scan
+
+
+only subfinder appends

@@ -22,8 +22,10 @@ type FlagConfig struct {
 type ToolConfig struct {
 	Name        string       `yaml:"name"`
 	Description string       `yaml:"description"`
+	Type        string       `yaml:"type" mapstructure:"type"`
 	Command     string       `yaml:"command"`
 	Flags       []FlagConfig `yaml:"flags"`
+	DependsOn   []string     `yaml:"depends_on" mapstructure:"depends_on"`
 }
 
 type ChainConfig struct {

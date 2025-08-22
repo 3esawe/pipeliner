@@ -7,7 +7,7 @@
             "request": "launch",
             "mode": "debug",
             "program": "${workspaceFolder}/cmd/pipeliner/main.go",
-            "args": ["scan", "-m","subdomain_alive", "-d", "deepseek.com"],
+            "args": ["scan", "-m","full_recon", "-d", "deepseek.com"],
             "env": {},
             "showLog": true,
             "cwd": "${workspaceFolder}",

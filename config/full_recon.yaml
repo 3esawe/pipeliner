@@ -1,0 +1,97 @@
+execution_mode: hybrid
+tools:
+  - name: subfinder
+    description: Subdomain discovery
+    type: domain_enum
+    command: subfinder
+    flags:
+      - flag: "-d"
+        option: "Domain"
+        required: true
+      - flag: "-o"
+        option: "Output"
+        default: "subfinder_output.txt"
+
+  - name: findomain
+    description: Subdomain enumeration
+    type: domain_enum
+    command: findomain
+    flags:
+      - flag: "-t"
+        option: "Domain"
+        required: true
+      - flag: "-u"
+        option: "Output"
+        default: "subdomain_findomain_output.txt"
+
+  - name: chaos-client
+    description: Chaos client for subdomain enumeration
+    type: domain_enum
+    command: chaos-client
+    flags:
+      - flag: "-d"
+        option: "Domain"
+        required: true
+      - flag: "-silent"
+        is_positional: true
+        option: "Silent Mode"
+        default: true
+      - flag: "-o"
+        option: "Output"
+        default: "subdomain_chaos_client_output.txt"
+
+  - name: httpxbb
+    description: httpx for probing discovered subdomains
+    command: httpxbb
+    type: recon
+    depends_on: ["subfinder", "findomain", "chaos-client"]
+    flags:
+      - flag: "-l"
+        option: "Input"
+        default: "httpx_input.txt"
+      - flag: "-o"
+        option: "Output"
+        default: "httpx_output.txt"
+      - flag: "-silent"
+        description: "Run in silent mode"
+        is_boolean: true
+      - flag: "-t"
+        default: "20"
+
+  - name: gowitness
+    description: Web screenshot
+    command: gowitness
+    type: fingerprint
+    depends_on: ["httpxbb"]
+    flags:
+      - flag: "scan"
+        is_positional: true
+      - flag: "file"
+        is_positional: true
+      - flag: "-f"
+        option: "File"
+        default: "httpx_output.txt"
+        required: true
+      - flag: "--screenshot-path"
+        option: "ScreenshotPath"
+        default: "."
+
+  - name: nuclei
+    description: Vulnerability scanner using templates
+    command: nuclei
+    type: vuln
+    depends_on: ["httpxbb"]
+    flags:
+      - flag: "-list"
+        option: "List of URLs"
+        required: true
+        default: "httpx_output.txt"
+      - flag: "-o"
+        option: "Output"
+        default: "nuclei_output.txt"
+      - flag: "-s"
+        option: "Severity values"
+        default: "high,critical"
+      - flag: "-pt"
+        option: "Protocol types"
+        default: "http,dns"

@@ -14,21 +14,24 @@ type ProgressEvent struct {
 	Status    string // "started", "running", "completed", "failed"
 	Message   string
 	Timestamp time.Time
+	ack       chan struct{}
 }
 
 type ConfigurableTool struct {
-	name     string
-	config   ToolConfig
-	runner   CommandRunner
-	progress chan ProgressEvent
+	name      string
+	tool_type string
+	config    ToolConfig
+	runner    CommandRunner
+	progress  chan ProgressEvent
 }
 
-func NewConfigurableTool(name string, config ToolConfig, runner CommandRunner) Tool {
+func NewConfigurableTool(name string, tool_type string, config ToolConfig, runner CommandRunner) Tool {
 	return &ConfigurableTool{
-		name:     name,
-		config:   config,
-		runner:   runner,
-		progress: make(chan ProgressEvent, 100),
+		name:      name,
+		tool_type: tool_type,
+		config:    config,
+		runner:    runner,
+		progress:  make(chan ProgressEvent, 500),
 	}
 }
 
@@ -36,15 +39,16 @@ func (t *ConfigurableTool) Name() string {
 	return t.name
 }
 
+func (t *ConfigurableTool) Type() string {
+	return t.tool_type
+}
+
+func (t *ConfigurableTool) DependsOn() []string { return t.config.DependsOn }
+
 func (t *ConfigurableTool) Run(ctx context.Context, options *Options) error {
 	done := make(chan bool, 1)
-
-	args, err := t.config.BuildArgs(options)
-	if err != nil {
-		return fmt.Errorf("failed to build arguments: %w", err)
-	}
-
-	log.Infof("Executing command: %s %s", t.config.Command, strings.Join(args, " "))
+	eventAck := make(chan struct{})
+	go t.monitorProgress(ctx, done)
 
 	t.sendProgress(ProgressEvent{
 		Tool:      t.name,
@@ -53,29 +57,28 @@ func (t *ConfigurableTool) Run(ctx context.Context, options *Options) error {
 		Timestamp: time.Now(),
 	})
 
-	go t.monitorProgress(ctx, done)
-	err = t.runner.Run(ctx, t.config.Command, args)
-	if err != nil {
-		t.sendProgress(ProgressEvent{
-			Status:    "Failed",
-			Message:   fmt.Sprintf("Command failed with error: %s", err.Error()),
-			Timestamp: time.Now(),
-			Tool:      t.name,
-		})
-		done <- true // stop monitoring progress for failed tool
-		return fmt.Errorf("tool %s failed: %w", t.name, err)
+	// Build args and run tool
+	args, buildErr := t.config.BuildArgs(options)
+	var err error
+	if buildErr != nil {
+		err = fmt.Errorf("failed to build arguments: %w", buildErr)
 	} else {
-		t.sendProgress(ProgressEvent{
-			Status:    "Completed",
-			Message:   fmt.Sprintf("%s completed successfully", t.name),
-			Timestamp: time.Now(),
-			Tool:      t.name,
-		})
-
-		log.Infof("Tool %s completed successfully", t.name)
-		done <- true
-		return nil
+		log.Infof("Executing command: %s %s", t.config.Command, strings.Join(args, " "))
+		err = t.runner.Run(ctx, t.config.Command, args)
 	}
+
+	status := "Completed"
+	if err != nil {
+		status = "Failed"
+	}
+	t.sendProgressWithAck(ProgressEvent{
+		Status:    status,
+		Message:   fmt.Sprintf("%s completed", t.name),
+		Timestamp: time.Now(),
+		Tool:      t.name,
+	}, eventAck)
+	done <- true
+	return err
 }
 
 func (t *ConfigurableTool) monitorProgress(ctx context.Context, done chan bool) {
@@ -91,6 +94,9 @@ func (t *ConfigurableTool) monitorProgress(ctx context.Context, done chan bool) 
 			return
 		case event := <-t.progress:
 			log.Infof("Tool: %s, Progress Event: %v, Message: %s, Timestamp: %s", event.Tool, event.Status, event.Message, event.Timestamp)
+			if event.ack != nil {
+				close(event.ack)
+			}
 		case <-ticker.C:
 			select {
 			case t.progress <- ProgressEvent{
@@ -103,6 +109,21 @@ func (t *ConfigurableTool) monitorProgress(ctx context.Context, done chan bool) 
 				// Skip if channel is full to avoid blocking
 			}
 		}
+	}
+}
+
+func (t *ConfigurableTool) sendProgressWithAck(event ProgressEvent, ack chan struct{}) {
+	event.ack = ack
+
+	select {
+	case t.progress <- event:
+		// Wait for acknowledgment with timeout
+		select {
+		case <-ack:
+		case <-time.After(500 * time.Millisecond):
+		}
+	default:
+		log.Warnf("Progress channel full, dropping event for %s", t.name)
 	}
 }
 
