@@ -2,6 +2,7 @@ package tools
 
 import (
 	"fmt"
+	"pipeliner/pkg/logger"
 	"reflect"
 	"time"
 )
@@ -15,6 +16,7 @@ type Options struct {
 	WorkingDir  string
 	Environment map[string]string
 	DryRun      bool
+	Logger      *logger.Logger // Added logger field
 }
 
 // DefaultOptions returns a new Options instance with sensible defaults
@@ -24,6 +26,7 @@ func DefaultOptions() *Options {
 		WorkingDir:  ".",
 		Environment: make(map[string]string),
 		DryRun:      false,
+		Logger:      nil, // Logger should be set by the caller
 	}
 }
 

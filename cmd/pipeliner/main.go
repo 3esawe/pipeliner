@@ -78,9 +78,13 @@ func (a *App) Close() error {
 // Run executes the scan command
 func (a *App) Run(ctx context.Context) error {
 	// Create engine with proper configuration
-	engine := engine.NewPiplinerEngine(ctx,
+	engineInstance, err := engine.NewPiplinerEngine(
+		engine.WithContext(ctx),
 		engine.WithPeriodic(a.config.PeriodicHours),
 		engine.WithNotificationClient(a.discordClient))
+	if err != nil {
+		return fmt.Errorf("failed to create pipeliner engine: %w", err)
+	}
 
 	// Prepare scan options with validation
 	options := tools.DefaultOptions()
@@ -93,7 +97,7 @@ func (a *App) Run(ctx context.Context) error {
 	}
 
 	// Set options
-	if err := engine.PrepareScan(options); err != nil {
+	if err := engineInstance.PrepareScan(options); err != nil {
 		return fmt.Errorf("failed to prepare scan: %w", err)
 	}
 
@@ -101,7 +105,7 @@ func (a *App) Run(ctx context.Context) error {
 	errChan := make(chan error, 1)
 	go func() {
 		defer close(errChan)
-		errChan <- engine.Run()
+		errChan <- engineInstance.Run()
 	}()
 
 	// Wait for completion or cancellation

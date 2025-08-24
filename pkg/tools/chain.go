@@ -3,6 +3,8 @@ package tools
 import (
 	"context"
 	"fmt"
+	"pipeliner/pkg/errors"
+	"pipeliner/pkg/logger"
 	"runtime"
 	"sync"
 
@@ -16,7 +18,15 @@ func executePostHooks(ctx context.Context, toolName string, hookNames []string, 
 		return nil
 	}
 
-	log.Infof("Executing %d post hooks for tool %s", len(hookNames), toolName)
+	// Use logger from options, fallback to direct logging if not available
+	if options.Logger != nil {
+		options.Logger.Info("Executing post hooks for tool", logger.Fields{
+			"hook_count": len(hookNames),
+			"tool_name":  toolName,
+		})
+	} else {
+		log.Infof("Executing %d post hooks for tool %s", len(hookNames), toolName)
+	}
 
 	for _, hookName := range hookNames {
 		postHook := GetPostHook(hookName)
@@ -24,7 +34,14 @@ func executePostHooks(ctx context.Context, toolName string, hookNames []string, 
 			// Try legacy hook for backward compatibility
 			legacyHook := GetHook(hookName)
 			if legacyHook == nil {
-				log.Warnf("Post hook %s not found for tool %s", hookName, toolName)
+				if options.Logger != nil {
+					options.Logger.Warn("Post hook not found for tool", logger.Fields{
+						"hook_name": hookName,
+						"tool_name": toolName,
+					})
+				} else {
+					log.Warnf("Post hook %s not found for tool %s", hookName, toolName)
+				}
 				continue
 			}
 			// Use legacy hook
@@ -36,8 +53,16 @@ func executePostHooks(ctx context.Context, toolName string, hookNames []string, 
 			}
 
 			if err := legacyHook.PostHook(hookCtx); err != nil {
-				log.Errorf("Post hook %s failed for tool %s: %v", hookName, toolName, err)
-				return fmt.Errorf("post hook %s failed for tool %s: %w", hookName, toolName, err)
+				if options.Logger != nil {
+					options.Logger.Error("Post hook failed for tool", logger.Fields{
+						"hook_name": hookName,
+						"tool_name": toolName,
+						"error":     err,
+					})
+				} else {
+					log.Errorf("Post hook %s failed for tool %s: %v", hookName, toolName, err)
+				}
+				return errors.NewToolError(toolName, fmt.Errorf("post hook %s failed: %w", hookName, err))
 			}
 		} else {
 			// Use new PostHook interface
@@ -49,12 +74,27 @@ func executePostHooks(ctx context.Context, toolName string, hookNames []string, 
 			}
 
 			if err := postHook.Execute(hookCtx); err != nil {
-				log.Errorf("Post hook %s failed for tool %s: %v", hookName, toolName, err)
-				return fmt.Errorf("post hook %s failed for tool %s: %w", hookName, toolName, err)
+				if options.Logger != nil {
+					options.Logger.Error("Post hook failed for tool", logger.Fields{
+						"hook_name": hookName,
+						"tool_name": toolName,
+						"error":     err,
+					})
+				} else {
+					log.Errorf("Post hook %s failed for tool %s: %v", hookName, toolName, err)
+				}
+				return errors.NewToolError(toolName, fmt.Errorf("post hook %s failed: %w", hookName, err))
 			}
 		}
 
-		log.Infof("Post hook %s completed successfully for tool %s", hookName, toolName)
+		if options.Logger != nil {
+			options.Logger.Info("Post hook completed successfully for tool", logger.Fields{
+				"hook_name": hookName,
+				"tool_name": toolName,
+			})
+		} else {
+			log.Infof("Post hook %s completed successfully for tool %s", hookName, toolName)
+		}
 	}
 
 	return nil

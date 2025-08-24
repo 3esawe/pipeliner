@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"pipeliner/internal/notification"
 	"pipeliner/internal/utils"
+	"pipeliner/pkg/errors"
 	output "pipeliner/pkg/io_utils"
+	"pipeliner/pkg/logger"
 	"pipeliner/pkg/tools"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
 
@@ -21,6 +23,7 @@ type EnginePiplinerOpts struct {
 	runner   tools.CommandRunner
 	periodic int
 	notifier *notification.NotificationClient
+	logger   *logger.Logger
 }
 
 type OptFunc func(*EnginePiplinerOpts)
@@ -29,22 +32,31 @@ type PiplinerEngine struct {
 	EnginePiplinerOpts
 }
 
-func NewPiplinerEngine(ctx context.Context, opts ...OptFunc) *PiplinerEngine {
-	log.Info("Initializing Pipeliner Engine...")
-	o := EnginePiplinerOpts{
-		ctx:      ctx,
-		options:  &tools.Options{},
-		runner:   &SimpleRunner{},
-		periodic: 5, // in hours
+func NewPiplinerEngine(optFuncs ...OptFunc) (*PiplinerEngine, error) {
+	// Initialize default options
+	engineOpts := EnginePiplinerOpts{
+		ctx: context.Background(),
 	}
 
-	for _, opt := range opts {
-		opt(&o)
+	// Apply all functional options
+	for _, optFunc := range optFuncs {
+		optFunc(&engineOpts)
+	}
+
+	// If no runner provided, create a default one
+	if engineOpts.runner == nil {
+		engineOpts.runner = &SimpleRunner{}
+	}
+
+	// If no logger provided, create a default one
+	if engineOpts.logger == nil {
+		defaultLogger := logger.NewLogger(logrus.InfoLevel)
+		engineOpts.logger = defaultLogger
 	}
 
 	return &PiplinerEngine{
-		EnginePiplinerOpts: o,
-	}
+		EnginePiplinerOpts: engineOpts,
+	}, nil
 }
 
 func WithRunner(runnerFunc tools.CommandRunner) OptFunc {
@@ -71,24 +83,33 @@ func WithNotificationClient(client *notification.NotificationClient) OptFunc {
 	}
 }
 
+func WithContext(ctx context.Context) OptFunc {
+	return func(opts *EnginePiplinerOpts) {
+		opts.ctx = ctx
+	}
+}
+
 func (e *PiplinerEngine) PrepareScan(options *tools.Options) error {
 	e.options = options
+	// Set logger in options so tools can use structured logging
+	e.options.Logger = e.logger
+
 	if e.options.ScanType != "" {
 		var err error
 		e.config, err = utils.NewViperConfig(e.options.ScanType)
 		if err != nil {
-			log.Errorf("Failed to load config: %v", err)
-			return fmt.Errorf("failed to load config: %w", err)
+			e.logger.Error("Failed to load config", logger.Fields{"error": err})
+			return errors.ErrInvalidConfig
 		}
 		err = utils.ValidateConfig(e.config)
 		if err != nil {
-			log.Errorf("Failed to validate config: %v", err)
-			return fmt.Errorf("failed to validate config: %w", err)
+			e.logger.Error("Failed to validate config", logger.Fields{"error": err})
+			return errors.ErrInvalidConfig
 		}
 
 		_, err = utils.CreateAndChangeScanDirectory(e.options.ScanType, e.options.Domain)
 		if err != nil {
-			log.Errorf("Failed to create scan directory: %v", err)
+			e.logger.Error("Failed to create scan directory", logger.Fields{"error": err})
 			return fmt.Errorf("failed to create scan directory: %w", err)
 		}
 
@@ -101,22 +122,22 @@ func (e *PiplinerEngine) Run() error {
 	ticker := time.NewTicker(time.Hour * time.Duration(e.periodic))
 	defer ticker.Stop()
 
-	log.Info("Running Pipeliner Engine...")
+	e.logger.Info("Running Pipeliner Engine...")
 	if err := e.runTools(); err != nil {
-		log.Errorf("Initial tool run failed: %v", err)
-		return fmt.Errorf("tool execution failed")
+		e.logger.Error("Initial tool run failed", logger.Fields{"error": err})
+		return errors.ErrToolExecutionFailed
 	}
 
 	for {
 		select {
 		case <-e.ctx.Done():
-			log.Info("Stopping Pipeliner Engine...")
+			e.logger.Info("Stopping Pipeliner Engine...")
 			return nil
 		case <-ticker.C:
-			log.Info("Running Periodic Pipeliner")
+			e.logger.Info("Running Periodic Pipeliner")
 			if err := e.runTools(); err != nil {
-				log.Errorf("Pipeline Engine stopped due to error %v or context being cancelled", err)
-				return fmt.Errorf("tool execution failed")
+				e.logger.Error("Pipeline Engine stopped due to error or context being cancelled", logger.Fields{"error": err})
+				return errors.ErrToolExecutionFailed
 			}
 		}
 	}
@@ -128,44 +149,44 @@ func (e *PiplinerEngine) runTools() error {
 		ExecutionMode: e.config.GetString("execution_mode"),
 	}
 	if err := e.unmarshalConfig(&chainConfig); err != nil {
-		log.Errorf("failed to parse tool chain config: %v", err)
-		return fmt.Errorf("failed to parse tool chain config: %w", err)
+		e.logger.Error("Failed to parse tool chain config", logger.Fields{"error": err})
+		return errors.ErrInvalidConfig
 	}
 
-	log.Infof("Loaded %d tools from config", len(chainConfig.Tools))
+	e.logger.Info("Loaded tools from config", logger.Fields{"tool_count": len(chainConfig.Tools)})
 
 	toolInstances, err := e.createToolInstances(chainConfig.Tools)
 	if err != nil {
-		log.Errorf("failed to create tool instances: %v", err)
-		return fmt.Errorf("failed to create tool instances: %w", err)
+		e.logger.Error("Failed to create tool instances", logger.Fields{"error": err})
+		return err // This already returns a custom error
 	}
 
 	var strategy tools.ExecutionStrategy
 	switch chainConfig.ExecutionMode {
 	case "concurrent":
-		log.Info("Using concurrent execution strategy")
+		e.logger.Info("Using concurrent execution strategy")
 		strategy = &tools.ConcurrentStrategy{}
 	case "hybrid":
-		log.Info("Using hybrid execution strategy")
+		e.logger.Info("Using hybrid execution strategy")
 		strategy = &tools.HybridStrategy{}
 	default:
-		log.Info("Using sequential execution strategy")
+		e.logger.Info("Using sequential execution strategy")
 		strategy = &tools.SequentialStrategy{}
 	}
 
 	if err := strategy.Run(e.ctx, toolInstances, e.options); err != nil {
-		log.Error(err)
+		e.logger.Error("Strategy execution failed", logger.Fields{"error": err})
 		return err
 	}
 
-	log.Info("Waiting for periodic scan to run")
+	e.logger.Info("Waiting for periodic scan to run")
 	return nil
 }
 
 func (e *PiplinerEngine) unmarshalConfig(chainConfig *tools.ChainConfig) error {
 	if err := e.config.Unmarshal(chainConfig); err != nil {
-		log.Errorf("failed to parse tool chain config: %v", err)
-		return fmt.Errorf("failed to parse tool chain config: %v", err)
+		e.logger.Error("Failed to parse tool chain config", logger.Fields{"error": err})
+		return errors.ErrInvalidConfig
 	}
 	return nil
 }
@@ -174,8 +195,12 @@ func (e *PiplinerEngine) createToolInstances(toolConfigs []tools.ToolConfig) ([]
 	var toolInstances []tools.Tool
 	for _, toolConfig := range toolConfigs {
 		if toolConfig.Command == "" {
-			log.Errorf("tool command not set for %s", toolConfig.Name)
-			return nil, fmt.Errorf("tool command not set for %s", toolConfig.Name)
+			e.logger.Error("Tool command not set", logger.Fields{"tool_name": toolConfig.Name})
+			return nil, &errors.ConfigError{
+				Field:   "command",
+				Value:   toolConfig.Name,
+				Message: "tool command cannot be empty",
+			}
 		}
 		tool := tools.NewConfigurableTool(toolConfig.Name, toolConfig.Type, toolConfig, e.runner)
 		toolInstances = append(toolInstances, tool)
