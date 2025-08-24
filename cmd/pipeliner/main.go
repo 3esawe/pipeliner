@@ -313,7 +313,7 @@ func initHooks() {
 	combineOutput := &hooks.CombineOutput{}
 	notifierHook := &hooks.NotifierHook{
 		Config: hooks.NotifierHookConfig{
-			Filename: "httpx_output.txt",
+			Filename: "nuclei_output.txt",
 		},
 	}
 

@@ -58,8 +58,6 @@ tools:
         is_boolean: true
       - flag: "-t"
         default: "20"
-    posthooks:
-      - "NotifierHook"
 
   - name: gowitness
     description: Web screenshot
@@ -98,3 +96,5 @@ tools:
       - flag: "-pt"
         option: "Protocol types"
         default: "http,dns"
+    posthooks:
+      - "NotifierHook"
