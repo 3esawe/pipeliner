@@ -35,7 +35,7 @@ func NewPiplinerEngine(ctx context.Context, opts ...OptFunc) *PiplinerEngine {
 		ctx:      ctx,
 		options:  &tools.Options{},
 		runner:   &SimpleRunner{},
-		periodic: 1, // in hours
+		periodic: 5, // in hours
 	}
 
 	for _, opt := range opts {

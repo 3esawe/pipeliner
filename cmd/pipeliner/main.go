@@ -53,7 +53,7 @@ var scanCmd = &cobra.Command{
 		}()
 
 		engine := engine.NewPiplinerEngine(ctx,
-			engine.WithPeriodic(1),
+			engine.WithPeriodic(5),
 			engine.WithNotificationClient(discordClient))
 
 		// Set options directly
