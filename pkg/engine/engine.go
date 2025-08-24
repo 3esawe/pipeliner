@@ -71,14 +71,30 @@ func WithNotificationClient(client *notification.NotificationClient) OptFunc {
 	}
 }
 
-func (e *PiplinerEngine) PrepareScan(options *tools.Options) {
+func (e *PiplinerEngine) PrepareScan(options *tools.Options) error {
 	e.options = options
 	if e.options.ScanType != "" {
-		e.config = utils.NewViperConfig(e.options.ScanType)
-		utils.CreateAndChangeScanDirectory(e.options.ScanType, e.options.Domain)
+		var err error
+		e.config, err = utils.NewViperConfig(e.options.ScanType)
+		if err != nil {
+			log.Errorf("Failed to load config: %v", err)
+			return fmt.Errorf("failed to load config: %w", err)
+		}
+		err = utils.ValidateConfig(e.config)
+		if err != nil {
+			log.Errorf("Failed to validate config: %v", err)
+			return fmt.Errorf("failed to validate config: %w", err)
+		}
+
+		_, err = utils.CreateAndChangeScanDirectory(e.options.ScanType, e.options.Domain)
+		if err != nil {
+			log.Errorf("Failed to create scan directory: %v", err)
+			return fmt.Errorf("failed to create scan directory: %w", err)
+		}
 
 		go output.WatchDirectory(e.ctx)
 	}
+	return nil
 }
 
 func (e *PiplinerEngine) Run() error {

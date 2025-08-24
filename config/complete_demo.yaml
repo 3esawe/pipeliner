@@ -1,0 +1,29 @@
+description: "Demo showing Stage Hooks vs PostHooks"
+execution_mode: sequential
+tools:
+  - name: domain-tool-1
+    description: First domain enumeration tool
+    type: domain_enum
+    command: echo
+    flags:
+      - flag: "domain1.example.com"
+        is_positional: true
+    posthooks:
+      - "CombineOutput"  # This runs after THIS tool completes
+
+  - name: domain-tool-2  
+    description: Second domain enumeration tool
+    type: domain_enum
+    command: echo
+    flags:
+      - flag: "domain2.example.com"
+        is_positional: true
+    # No PostHooks - to show they're optional
+
+  - name: recon-tool
+    description: Recon tool that runs after domain tools
+    type: recon
+    command: echo
+    flags:
+      - flag: "Running recon..."
+        is_positional: true

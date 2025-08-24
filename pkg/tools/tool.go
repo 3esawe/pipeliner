@@ -45,6 +45,8 @@ func (t *ConfigurableTool) Type() string {
 
 func (t *ConfigurableTool) DependsOn() []string { return t.config.DependsOn }
 
+func (t *ConfigurableTool) PostHooks() []string { return t.config.PostHooks }
+
 func (t *ConfigurableTool) Run(ctx context.Context, options *Options) error {
 	done := make(chan bool, 1)
 	eventAck := make(chan struct{})

@@ -1,4 +1,5 @@
 # config/subdomain.yaml
+description: "Subdomain enumeration with HTTP probing to identify live subdomains"
 execution_mode: sequential
 tools:
   - name: subfinder

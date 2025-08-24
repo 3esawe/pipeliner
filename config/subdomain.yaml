@@ -1,4 +1,5 @@
 # config/subdomain_concurrent.yaml
+description: "Basic subdomain enumeration using multiple tools in concurrent mode"
 execution_mode: concurrent
 tools:
   - name: subfinder

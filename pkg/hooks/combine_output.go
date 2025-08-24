@@ -15,7 +15,12 @@ func (c *CombineOutput) Name() string {
 	return "combine_output"
 }
 
-func (c *CombineOutput) PostHook(ctx tools.HookContext) error {
+func (c *CombineOutput) Description() string {
+	return "Combines subdomain enumeration outputs from multiple tools into a single file (httpx_input.txt) for downstream processing"
+}
+
+// ExecuteForStage implements StageHook interface - runs when all domain enumeration tools complete
+func (c *CombineOutput) ExecuteForStage(ctx tools.HookContext) error {
 	outputFile, err := os.Create(filepath.Join(ctx.OutputDir, "httpx_input.txt"))
 	if err != nil {
 		return fmt.Errorf("failed to create httpx_input.txt: %w", err)
@@ -61,4 +66,10 @@ func (c *CombineOutput) PostHook(ctx tools.HookContext) error {
 	})
 
 	return err
+}
+
+// PostHook implements legacy Hook interface for backward compatibility
+// Deprecated: This hook should only be used as a StageHook, not as a PostHook
+func (c *CombineOutput) PostHook(ctx tools.HookContext) error {
+	return c.ExecuteForStage(ctx)
 }

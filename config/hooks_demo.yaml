@@ -1,0 +1,22 @@
+description: "Simple test configuration to demonstrate PostHooks vs Stage Hooks"
+execution_mode: sequential
+tools:
+  - name: test-tool-1
+    description: Test tool with PostHook
+    type: domain_enum
+    command: echo
+    flags:
+      - flag: "Testing PostHook for test-tool-1"
+        is_positional: true
+    posthooks:
+      - "CombineOutput"
+
+  - name: test-tool-2
+    description: Another test tool with PostHook
+    type: domain_enum
+    command: echo
+    flags:
+      - flag: "Testing PostHook for test-tool-2"
+        is_positional: true
+    posthooks:
+      - "NotifierHook"

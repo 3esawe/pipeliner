@@ -25,7 +25,26 @@ func (n *NotifierHook) Name() string {
 	return "notification"
 }
 
+func (n *NotifierHook) Description() string {
+	return "Sends Discord notifications for each line in the specified output file (useful for vulnerability alerts)"
+}
+
+// Execute implements PostHook interface - can be used in YAML configurations
+func (n *NotifierHook) Execute(ctx tools.HookContext) error {
+	return n.executeNotification(ctx)
+}
+
+// ExecuteForStage implements StageHook interface - can be used for stage completion
+func (n *NotifierHook) ExecuteForStage(ctx tools.HookContext) error {
+	return n.executeNotification(ctx)
+}
+
+// PostHook implements legacy Hook interface for backward compatibility
 func (n *NotifierHook) PostHook(ctx tools.HookContext) error {
+	return n.executeNotification(ctx)
+}
+
+func (n *NotifierHook) executeNotification(ctx tools.HookContext) error {
 
 	filename := n.Config.Filename
 	file, err := os.Open(filename)

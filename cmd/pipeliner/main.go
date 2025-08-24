@@ -2,131 +2,338 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"pipeliner/internal/notification"
 	"pipeliner/pkg/engine"
 	hooks "pipeliner/pkg/hooks"
+	"pipeliner/pkg/logger"
 	tools "pipeliner/pkg/tools"
+	"strings"
 	"syscall"
+	"time"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
-var (
-	module        string
-	domain        string
-	verbose       bool
+// Config holds application configuration
+type Config struct {
+	Module        string
+	Domain        string
+	Verbose       bool
+	ConfigPath    string
+	Timeout       time.Duration
+	PeriodicHours int
+}
+
+// App represents the main application
+type App struct {
+	config        *Config
+	logger        *logger.Logger
 	discordClient *notification.NotificationClient
-)
-
-var rootCmd = &cobra.Command{
-	Use:   "pipeliner",
-	Short: "A modular pipeline tool for security scanning",
-	Long:  `Pipeliner is a modular tool for running security scanning pipelines with configurable parameters`,
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		if verbose {
-			log.SetLevel(log.DebugLevel)
-		} else {
-			log.SetLevel(log.InfoLevel)
-		}
-	},
 }
 
-var scanCmd = &cobra.Command{
-	Use:   "scan",
-	Short: "Scan using specified pipeline module",
-	Long:  `Scan using the specified pipeline module configuration`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		cmd.SilenceUsage = true
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+// NewApp creates a new application instance
+func NewApp(config *Config) (*App, error) {
+	// Initialize logger
+	logLevel := logrus.InfoLevel
+	if config.Verbose {
+		logLevel = logrus.DebugLevel
+	}
+	appLogger := logger.NewLogger(logLevel)
 
-		// Handle SIGINT and SIGTERM
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-		go func() {
-			<-sigChan
-			log.Info("Shutting down")
-			cancel()
-		}()
-
-		engine := engine.NewPiplinerEngine(ctx,
-			engine.WithPeriodic(5),
-			engine.WithNotificationClient(discordClient))
-
-		// Set options directly
-		engine.PrepareScan(&tools.Options{
-			ScanType: module,
-			Domain:   domain,
-		})
-
-		errChan := make(chan error, 1)
-		go func() {
-			errChan <- engine.Run()
-		}()
-
-		select {
-		case err := <-errChan:
-			if err != nil {
-				log.Errorf("Main error: %v", err)
-				return err
-			}
-		case <-ctx.Done():
-			err := <-errChan
-			if err != nil {
-				log.Errorf("Main error: %v", err)
-				return err
-			}
-		}
-
-		log.Info("All tools finished execution")
-		return nil
-
-	},
-}
-
-func init() {
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging")
-
-	// Scan command flags
-	scanCmd.Flags().StringVarP(&module, "module", "m", "", "Pipeline module to execute (required)")
-	scanCmd.Flags().StringVarP(&domain, "domain", "d", "", "Target domain for scanning")
-
-	// Mark required flags
-	scanCmd.MarkFlagRequired("module")
-
-	rootCmd.AddCommand(scanCmd)
-}
-
-func main() {
-	initHooks()
-	// Initialize Discord client
+	// Initialize Discord client if configured
 	var discordClient *notification.NotificationClient
 	if token := os.Getenv("DISCORD_TOKEN"); token != "" {
 		var err error
 		discordClient, err = notification.NewNotificationClient()
 		if err != nil {
-			log.Warnf("Failed to initialize Discord client: %v", err)
+			appLogger.WithError(err).Warn("Failed to initialize Discord client")
 		} else {
-			defer discordClient.Close()
-			log.Info("Discord notifications enabled")
+			appLogger.Info("Discord notifications enabled")
 		}
 	} else {
-		log.Info("DISCORD_TOKEN not set - Discord notifications disabled")
+		appLogger.Info("DISCORD_TOKEN not set - Discord notifications disabled")
 	}
 
+	return &App{
+		config:        config,
+		logger:        appLogger,
+		discordClient: discordClient,
+	}, nil
+}
+
+// Close cleans up application resources
+func (a *App) Close() error {
+	if a.discordClient != nil {
+		return a.discordClient.Close()
+	}
+	return nil
+}
+
+// Run executes the scan command
+func (a *App) Run(ctx context.Context) error {
+	// Create engine with proper configuration
+	engine := engine.NewPiplinerEngine(ctx,
+		engine.WithPeriodic(a.config.PeriodicHours),
+		engine.WithNotificationClient(a.discordClient))
+
+	// Prepare scan options with validation
+	options := tools.DefaultOptions()
+	options.ScanType = a.config.Module
+	options.Domain = a.config.Domain
+	options.Timeout = a.config.Timeout
+
+	if err := options.Validate(); err != nil {
+		return fmt.Errorf("invalid options: %w", err)
+	}
+
+	// Set options
+	if err := engine.PrepareScan(options); err != nil {
+		return fmt.Errorf("failed to prepare scan: %w", err)
+	}
+
+	// Run engine in goroutine
+	errChan := make(chan error, 1)
+	go func() {
+		defer close(errChan)
+		errChan <- engine.Run()
+	}()
+
+	// Wait for completion or cancellation
+	select {
+	case err := <-errChan:
+		if err != nil {
+			a.logger.WithError(err).Error("Engine execution failed")
+			return err
+		}
+	case <-ctx.Done():
+		a.logger.Info("Application context cancelled, waiting for engine to stop...")
+		// Give engine some time to stop gracefully
+		timeout := time.NewTimer(30 * time.Second)
+		defer timeout.Stop()
+
+		select {
+		case err := <-errChan:
+			if err != nil {
+				a.logger.WithError(err).Error("Engine execution failed during shutdown")
+				return err
+			}
+		case <-timeout.C:
+			a.logger.Warn("Engine shutdown timed out")
+			return fmt.Errorf("engine shutdown timed out")
+		}
+	}
+
+	a.logger.Info("All tools finished execution")
+	return nil
+}
+
+// getConfigDescription attempts to extract a description from a YAML config file
+func getConfigDescription(configPath string) string {
+	type ConfigMeta struct {
+		Description string `yaml:"description,omitempty"`
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return ""
+	}
+
+	var meta ConfigMeta
+	if err := yaml.Unmarshal(data, &meta); err != nil {
+		return ""
+	}
+
+	return meta.Description
+}
+
+func main() {
+	config := &Config{
+		Timeout:       30 * time.Minute, // Default timeout
+		PeriodicHours: 5,                // Default periodic interval
+	}
+
+	var rootCmd = &cobra.Command{
+		Use:   "pipeliner",
+		Short: "A modular pipeline tool for security scanning",
+		Long:  `Pipeliner is a modular tool for running security scanning pipelines with configurable parameters`,
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			// Configuration is handled in NewApp
+		},
+	}
+
+	var scanCmd = &cobra.Command{
+		Use:   "scan",
+		Short: "Scan using specified pipeline module",
+		Long:  `Scan using the specified pipeline module configuration`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cmd.SilenceUsage = true
+
+			// Create application instance
+			app, err := NewApp(config)
+			if err != nil {
+				return fmt.Errorf("failed to initialize application: %w", err)
+			}
+			defer func() {
+				if closeErr := app.Close(); closeErr != nil {
+					app.logger.WithError(closeErr).Error("Error closing application")
+				}
+			}()
+
+			// Setup graceful shutdown
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			// Handle signals
+			sigChan := make(chan os.Signal, 1)
+			signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+			go func() {
+				sig := <-sigChan
+				app.logger.WithFields(logger.Fields{
+					"signal": sig.String(),
+				}).Info("Received shutdown signal")
+				cancel()
+			}()
+
+			// Run the application
+			return app.Run(ctx)
+		},
+	}
+
+	// Setup flags
+	rootCmd.PersistentFlags().BoolVarP(&config.Verbose, "verbose", "v", false, "Enable verbose logging")
+	rootCmd.PersistentFlags().StringVar(&config.ConfigPath, "config", "./config", "Configuration directory path")
+	rootCmd.PersistentFlags().DurationVar(&config.Timeout, "timeout", 30*time.Minute, "Global timeout for operations")
+	rootCmd.PersistentFlags().IntVar(&config.PeriodicHours, "periodic-hours", 5, "Hours between periodic scans")
+
+	scanCmd.Flags().StringVarP(&config.Module, "module", "m", "", "Pipeline module to execute (required)")
+	scanCmd.Flags().StringVarP(&config.Domain, "domain", "d", "", "Target domain for scanning")
+
+	// Mark required flags
+	scanCmd.MarkFlagRequired("module")
+
+	var listConfigsCmd = &cobra.Command{
+		Use:   "list-configs",
+		Short: "List available configuration files",
+		Long:  `List all available configuration files and their descriptions`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cmd.SilenceUsage = true
+
+			configPath := config.ConfigPath
+			if configPath == "" {
+				configPath = "./config"
+			}
+
+			files, err := os.ReadDir(configPath)
+			if err != nil {
+				return fmt.Errorf("failed to read config directory %s: %w", configPath, err)
+			}
+
+			fmt.Println("Available Configurations:")
+			fmt.Println("========================")
+
+			for _, file := range files {
+				if !strings.HasSuffix(file.Name(), ".yaml") && !strings.HasSuffix(file.Name(), ".yml") {
+					continue
+				}
+
+				configFile := filepath.Join(configPath, file.Name())
+				description := getConfigDescription(configFile)
+
+				fmt.Printf("\n• %s\n", strings.TrimSuffix(file.Name(), filepath.Ext(file.Name())))
+				fmt.Printf("  File: %s\n", file.Name())
+				if description != "" {
+					fmt.Printf("  Description: %s\n", description)
+				}
+			}
+
+			if len(files) == 0 {
+				fmt.Printf("No configuration files found in %s\n", configPath)
+			}
+
+			return nil
+		},
+	}
+
+	var listHooksCmd = &cobra.Command{
+		Use:   "list-hooks",
+		Short: "List available hooks",
+		Long:  `List all available hooks and their descriptions`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cmd.SilenceUsage = true
+
+			// Initialize hooks first
+			initHooks()
+
+			hooks := tools.ListAvailableHooks()
+
+			fmt.Println("Available Hooks:")
+			fmt.Println("===============")
+
+			for _, hook := range hooks {
+				fmt.Printf("\n• %s\n", hook.Name)
+				if hook.Description != "" {
+					fmt.Printf("  Description: %s\n", hook.Description)
+				}
+			}
+
+			if len(hooks) == 0 {
+				fmt.Println("No hooks available")
+			}
+
+			return nil
+		},
+	}
+
+	rootCmd.AddCommand(scanCmd)
+	rootCmd.AddCommand(listConfigsCmd)
+	rootCmd.AddCommand(listHooksCmd)
+
+	// Initialize hooks
+	initHooks()
+
+	// Execute command
 	if err := rootCmd.Execute(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
 func initHooks() {
-	tools.RegisterHookForStage(tools.StageSubdomain, &hooks.CombineOutput{})
-	tools.RegisterHookForStage(tools.StageVuln, &hooks.NotifierHook{
+	// Create hook instances
+	combineOutput := &hooks.CombineOutput{}
+	notifierHook := &hooks.NotifierHook{
 		Config: hooks.NotifierHookConfig{
-			Filename: "nuclei_output.txt",
+			Filename: "httpx_output.txt",
 		},
-	})
+	}
+
+	// =====================================
+	// STAGE HOOKS (System-controlled)
+	// =====================================
+	// These run automatically when ALL tools in a stage complete
+
+	// CombineOutput: Combines all subdomain enumeration results into httpx_input.txt
+	// Runs when ALL domain_enum tools complete
+	tools.RegisterStageHook(tools.StageSubdomain, combineOutput)
+
+	// NotifierHook: Sends notifications for vulnerability scan results
+	// Runs when ALL vuln_scan tools complete
+
+	// =====================================
+	// POST HOOKS (User-controlled via YAML)
+	// =====================================
+	// These can be specified in YAML configurations under "posthooks"
+
+	// NotifierHook: Can be used for individual tool notifications
+	tools.RegisterPostHook("NotifierHook", notifierHook)
+
+	// NOTE: CombineOutput is intentionally NOT available as a PostHook
+	// because it needs ALL domain enumeration tools to complete first,
+	// not just individual tools
 }

@@ -1,0 +1,34 @@
+description: "Test configuration with PostHooks demonstration"
+execution_mode: sequential
+tools:
+  - name: subfinder
+    description: Subdomain discovery
+    type: domain_enum
+    command: subfinder
+    flags:
+      - flag: "-d"
+        option: "Domain"
+        required: true
+      - flag: "-o"
+        option: "File"
+        value: "subfinder_output.txt"
+      - flag: "-config"
+        value: ".config/subfinder/provider-config.yaml"
+    posthooks:
+      - "CombineOutput"
+
+  - name: httpx
+    description: HTTP probing
+    type: network_enum
+    command: httpx
+    flags:
+      - flag: "-l"
+        value: "httpx_input.txt"
+      - flag: "-o"
+        option: "File"
+        value: "httpx_output.txt"
+      - flag: "-sc"
+      - flag: "-title"
+      - flag: "-tech-detect"
+    posthooks:
+      - "NotifierHook"

@@ -2,6 +2,8 @@ package tools
 
 import (
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type Stage string
@@ -75,12 +77,54 @@ func (st *stageTracker) markCompleted(toolName string) Stage {
 	return ""
 }
 
-var stageHooks = make(map[Stage][]Hook)
+var stageHooks = make(map[Stage][]StageHook)
 
-func RegisterHookForStage(stage Stage, hook Hook) {
+// RegisterStageHook registers a hook to run when ALL tools in a stage complete
+// This is system-controlled - runs once per stage completion
+func RegisterStageHook(stage Stage, hook StageHook) {
 	stageHooks[stage] = append(stageHooks[stage], hook)
+	log.Debugf("Registered stage hook: %s for stage %s", hook.Name(), stage)
 }
 
-func GetHooksForStage(stage Stage) []Hook {
+// GetStageHooks returns hooks registered for a specific stage
+func GetStageHooks(stage Stage) []StageHook {
 	return stageHooks[stage]
+}
+
+// Deprecated: Use RegisterStageHook instead
+func RegisterHookForStage(stage Stage, hook Hook) {
+	// Wrap legacy hook to implement StageHook interface
+	wrapper := &legacyStageHookWrapper{hook: hook}
+	RegisterStageHook(stage, wrapper)
+}
+
+// Deprecated: Use GetStageHooks instead
+func GetHooksForStage(stage Stage) []Hook {
+	stageHooks := GetStageHooks(stage)
+	legacyHooks := make([]Hook, 0, len(stageHooks))
+
+	for _, stageHook := range stageHooks {
+		if wrapper, ok := stageHook.(*legacyStageHookWrapper); ok {
+			legacyHooks = append(legacyHooks, wrapper.hook)
+		}
+	}
+
+	return legacyHooks
+}
+
+// legacyStageHookWrapper wraps legacy Hook interface to implement StageHook interface
+type legacyStageHookWrapper struct {
+	hook Hook
+}
+
+func (w *legacyStageHookWrapper) Name() string {
+	return w.hook.Name()
+}
+
+func (w *legacyStageHookWrapper) Description() string {
+	return w.hook.Description()
+}
+
+func (w *legacyStageHookWrapper) ExecuteForStage(ctx HookContext) error {
+	return w.hook.PostHook(ctx)
 }

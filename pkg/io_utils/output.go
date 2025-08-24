@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	log "github.com/sirupsen/logrus"
@@ -28,7 +29,11 @@ func WatchDirectory(ctx context.Context) {
 		log.Error(err)
 		return
 	}
-	defer watcher.Close()
+	defer func() {
+		if closeErr := watcher.Close(); closeErr != nil {
+			log.Errorf("Error closing watcher: %v", closeErr)
+		}
+	}()
 
 	fileInfo, err := os.Stat(path)
 	if err != nil {
@@ -40,63 +45,88 @@ func WatchDirectory(ctx context.Context) {
 		return
 	}
 
+	// Add the path to watcher first, before starting the goroutine
+	if err := watcher.Add(path); err != nil {
+		log.Errorf("Error adding path to watcher: %v", err)
+		return
+	}
+
 	go func() {
+		defer log.Info("File watcher goroutine stopped")
+
 		for {
 			select {
 			case event, ok := <-watcher.Events:
 				if !ok {
+					log.Debug("Watcher events channel closed")
 					return
 				}
-				if event.Op&fsnotify.Write == fsnotify.Write {
-					if !isTextFile(event.Name) {
-						continue
-					}
-					// Process write events
-					fi, err := os.Stat(event.Name)
-					if err != nil {
-						log.Errorf("Error stating %s: %v", event.Name, err)
-						continue
-					}
-					if fi.IsDir() {
-						continue
-					}
 
-					// Concurrency control
-					procMutex.Lock()
-					if procMap[event.Name] {
-						procMutex.Unlock()
-						continue
-					}
-					procMap[event.Name] = true
-					procMutex.Unlock()
-
-					// Process file in goroutine
-					go func(file string) {
-						defer func() {
-							procMutex.Lock()
-							delete(procMap, file) // clean up to process the file agian
-							procMutex.Unlock()
-						}()
-						handleDuplicate(file)
-					}(event.Name)
+				if event.Op&fsnotify.Write != fsnotify.Write {
+					continue
 				}
+
+				if !isTextFile(event.Name) {
+					continue
+				}
+
+				// Process write events
+				fi, err := os.Stat(event.Name)
+				if err != nil {
+					log.Errorf("Error stating %s: %v", event.Name, err)
+					continue
+				}
+				if fi.IsDir() {
+					continue
+				}
+
+				// Concurrency control with timeout
+				procMutex.Lock()
+				if procMap[event.Name] {
+					procMutex.Unlock()
+					continue
+				}
+				procMap[event.Name] = true
+				procMutex.Unlock()
+
+				// Process file in goroutine with proper cleanup
+				go func(file string) {
+					defer func() {
+						procMutex.Lock()
+						delete(procMap, file)
+						procMutex.Unlock()
+					}()
+
+					// Add timeout context for file processing
+					fileCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+					defer cancel()
+
+					select {
+					case <-fileCtx.Done():
+						log.Warnf("File processing timed out for %s", file)
+						return
+					default:
+						handleDuplicate(file)
+					}
+				}(event.Name)
+
 			case err, ok := <-watcher.Errors:
 				if !ok {
+					log.Debug("Watcher errors channel closed")
 					return
 				}
-				log.Error(err)
+				log.Errorf("Watcher error: %v", err)
+
 			case <-ctx.Done():
-				log.Info("Watcher closed")
+				log.Info("Watcher context cancelled, stopping...")
 				return
 			}
 		}
 	}()
 
-	err = watcher.Add(path)
-	if err != nil {
-		log.Error(err)
-	}
+	// Block until context is done
 	<-ctx.Done()
+	log.Info("Directory watcher stopped")
 }
 
 func isTextFile(filePath string) bool {

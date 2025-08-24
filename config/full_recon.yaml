@@ -1,3 +1,4 @@
+description: "Complete reconnaissance pipeline including subdomain discovery, HTTP probing, and vulnerability scanning"
 execution_mode: hybrid
 tools:
   - name: subfinder
@@ -57,6 +58,8 @@ tools:
         is_boolean: true
       - flag: "-t"
         default: "20"
+    posthooks:
+      - "NotifierHook"
 
   - name: gowitness
     description: Web screenshot
