@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"os"
 	"pipeliner/internal/notification"
+	"pipeliner/pkg/logger"
 	"pipeliner/pkg/tools"
 	"strings"
 	"sync"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 type NotifierHookConfig struct {
@@ -19,6 +20,15 @@ type NotifierHookConfig struct {
 
 type NotifierHook struct {
 	Config NotifierHookConfig
+	logger *logger.Logger
+}
+
+// NewNotifierHook creates a new NotifierHook instance
+func NewNotifierHook(config NotifierHookConfig) *NotifierHook {
+	return &NotifierHook{
+		Config: config,
+		logger: logger.NewLogger(logrus.InfoLevel),
+	}
 }
 
 func (n *NotifierHook) Name() string {
@@ -49,14 +59,17 @@ func (n *NotifierHook) executeNotification(ctx tools.HookContext) error {
 	filename := n.Config.Filename
 	file, err := os.Open(filename)
 	if err != nil {
-		log.Errorf("Error opening domain file %s: %v", filename, err)
+		n.logger.WithFields(logger.Fields{
+			"filename": filename,
+			"error":    err,
+		}).Error("Error opening domain file")
 		return err
 	}
 	defer file.Close()
 
 	discord, err := notification.NewNotificationClient()
 	if err != nil {
-		log.Errorf("Error creating discord client: %v", err)
+		n.logger.WithError(err).Error("Error creating discord client")
 		return err
 	}
 	defer discord.Close()
@@ -72,7 +85,10 @@ func (n *NotifierHook) executeNotification(ctx tools.HookContext) error {
 			defer wg.Done()
 			for line := range lines {
 				if err := discord.SendDomainAddedMessage(line); err != nil {
-					log.Errorf("Failed to send Discord notification: %v", err)
+					n.logger.WithFields(logger.Fields{
+						"line":  line,
+						"error": err,
+					}).Error("Failed to send Discord notification")
 				}
 				time.Sleep(250 * time.Millisecond)
 			}

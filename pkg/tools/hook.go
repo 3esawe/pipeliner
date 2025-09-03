@@ -2,8 +2,9 @@ package tools
 
 import (
 	"context"
+	"pipeliner/pkg/logger"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 type HookContext struct {
@@ -55,18 +56,24 @@ type StageHookInfo struct {
 
 var postHookRegistry = make(map[string]*PostHookInfo)
 var legacyHookRegistry = make(map[string]*PostHookInfo) // For backward compatibility
+var hookLogger = logger.NewLogger(logrus.InfoLevel)
 
 // RegisterPostHook registers a user-defined hook that can be used in YAML configurations
 func RegisterPostHook(name string, hook PostHook) {
 	if _, exists := postHookRegistry[name]; exists {
-		log.Warnf("PostHook %s already registered, overwriting", name)
+		hookLogger.WithFields(logger.Fields{
+			"hook": name,
+		}).Warn("PostHook already registered, overwriting")
 	}
 	postHookRegistry[name] = &PostHookInfo{
 		Name:        name,
 		Description: hook.Description(),
 		Hook:        hook,
 	}
-	log.Debugf("Registered post hook: %s - %s", name, hook.Description())
+	hookLogger.WithFields(logger.Fields{
+		"hook":        name,
+		"description": hook.Description(),
+	}).Info("Registered post hook")
 }
 
 // GetPostHook retrieves a registered post hook by name
@@ -85,7 +92,9 @@ func GetPostHook(name string) PostHook {
 // Deprecated: Use RegisterPostHook for new implementations
 func RegisterHook(name string, hook Hook) {
 	if _, exists := legacyHookRegistry[name]; exists {
-		log.Warnf("Legacy hook %s already registered, overwriting", name)
+		hookLogger.WithFields(logger.Fields{
+			"hook": name,
+		}).Warn("Legacy hook already registered, overwriting")
 	}
 
 	// Wrap legacy hook to implement PostHook interface
@@ -95,7 +104,10 @@ func RegisterHook(name string, hook Hook) {
 		Description: hook.Description(),
 		Hook:        wrapper,
 	}
-	log.Debugf("Registered legacy hook: %s - %s", name, hook.Description())
+	hookLogger.WithFields(logger.Fields{
+		"hook":        name,
+		"description": hook.Description(),
+	}).Info("Registered legacy hook")
 }
 
 // GetHook retrieves a legacy hook for backward compatibility

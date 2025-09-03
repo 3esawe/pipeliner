@@ -1,0 +1,101 @@
+description: "Example configuration demonstrating URL replacement feature"
+execution_mode: sequential
+tools:
+  # Standard subdomain discovery
+  - name: subfinder
+    description: Subdomain discovery
+    type: domain_enum
+    command: subfinder
+    flags:
+      - flag: "-d"
+        option: "Domain"
+        required: true
+      - flag: "-o"
+        option: "Output"
+        default: "subfinder_output.txt"
+
+  # HTTP probing of discovered subdomains
+  - name: httpx
+    description: HTTP probing of subdomains
+    command: httpx
+    type: recon
+    depends_on: ["subfinder"]
+    flags:
+      - flag: "-l"
+        option: "Input"
+        default: "subfinder_output.txt"
+      - flag: "-o"
+        option: "Output"
+        default: "httpx_output.txt"
+      - flag: "-silent"
+        description: "Run in silent mode"
+        is_boolean: true
+
+  # Directory fuzzing using replacement feature
+  - name: ffuf-directories
+    description: Directory fuzzing on each discovered URL
+    command: ffuf
+    type: recon
+    replace: "{{URL}}"
+    depends_on: ["httpx"]
+    flags:
+      - flag: "-u"
+        default: "{{URL}}/FUZZ"
+      - flag: "-w"
+        default: "/usr/share/wordlists/dirb/common.txt"
+      - flag: "-mc"
+        default: "200,301,302,403"
+      - flag: "-t"
+        default: "10"
+      - flag: "-o"
+        default: "ffuf_directories_output.json"
+
+  # API fuzzing using replacement feature with custom wordlist
+  - name: ffuf-api
+    description: API endpoint fuzzing on each URL
+    command: ffuf
+    type: recon
+    replace: "{{URL}}"
+    depends_on: ["httpx"]
+    flags:
+      - flag: "-u"
+        default: "{{URL}}/api/FUZZ"
+      - flag: "-w"
+        default: "/home/alesawe/bbtools/data/httparchive_apiroutes_2025_07_27.txt"
+      - flag: "-mc"
+        default: "200,401,403"
+      - flag: "-t"
+        default: "5"
+      - flag: "-o"
+        default: "ffuf_api_output.json"
+
+  # Custom tool with replacement - example of a hypothetical URL scanner
+  - name: custom-url-scanner
+    description: Custom scanner that processes each URL individually
+    command: ./custom-scanner.sh
+    type: vuln
+    replace: "{{TARGET}}"
+    depends_on: ["httpx"]
+    flags:
+      - flag: "--url"
+        default: "{{TARGET}}"
+      - flag: "--output-dir"
+        default: "custom_scans/"
+      - flag: "--timeout"
+        default: "30"
+
+  # Traditional tool without replacement (for comparison)
+  - name: nuclei
+    description: Vulnerability scanner using all URLs at once
+    command: nuclei
+    type: vuln
+    depends_on: ["httpx"]
+    flags:
+      - flag: "-list"
+        default: "httpx_output.txt"
+      - flag: "-o"
+        default: "nuclei_output.txt"
+      - flag: "-s"
+        default: "high,critical"
+      - flag: "-c"
+        default: "10"

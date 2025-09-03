@@ -9,6 +9,7 @@ import (
 	"pipeliner/pkg/errors"
 	output "pipeliner/pkg/io_utils"
 	"pipeliner/pkg/logger"
+	"pipeliner/pkg/runner"
 	"pipeliner/pkg/tools"
 	"time"
 
@@ -43,9 +44,10 @@ func NewPiplinerEngine(optFuncs ...OptFunc) (*PiplinerEngine, error) {
 		optFunc(&engineOpts)
 	}
 
-	// If no runner provided, create a default one
+	// If no runner provided, create a default one with replacement support
 	if engineOpts.runner == nil {
-		engineOpts.runner = &SimpleRunner{}
+		baseRunner := runner.NewSimpleRunner()
+		engineOpts.runner = runner.NewReplacementCommandRunner(baseRunner)
 	}
 
 	// If no logger provided, create a default one
@@ -193,6 +195,14 @@ func (e *PiplinerEngine) unmarshalConfig(chainConfig *tools.ChainConfig) error {
 
 func (e *PiplinerEngine) createToolInstances(toolConfigs []tools.ToolConfig) ([]tools.Tool, error) {
 	var toolInstances []tools.Tool
+
+	// Create a tool registry and populate it with all tool configurations
+	registry := tools.NewSimpleToolRegistry()
+	for _, toolConfig := range toolConfigs {
+		registry.RegisterTool(toolConfig)
+	}
+
+	// Create tool instances with registry access
 	for _, toolConfig := range toolConfigs {
 		if toolConfig.Command == "" {
 			e.logger.Error("Tool command not set", logger.Fields{"tool_name": toolConfig.Name})
@@ -202,7 +212,8 @@ func (e *PiplinerEngine) createToolInstances(toolConfigs []tools.ToolConfig) ([]
 				Message: "tool command cannot be empty",
 			}
 		}
-		tool := tools.NewConfigurableTool(toolConfig.Name, toolConfig.Type, toolConfig, e.runner)
+
+		tool := tools.NewConfigurableToolWithRegistry(toolConfig.Name, toolConfig.Type, toolConfig, e.runner, registry)
 		toolInstances = append(toolInstances, tool)
 	}
 	return toolInstances, nil

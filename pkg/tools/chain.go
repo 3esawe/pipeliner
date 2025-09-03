@@ -8,8 +8,11 @@ import (
 	"runtime"
 	"sync"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
+
+// Package-level logger for tools chain operations
+var chainLogger = logger.NewLogger(logrus.InfoLevel)
 
 // executePostHooks runs user-defined post hooks for an individual tool
 // These hooks run after EACH tool completes (user-controlled via YAML)
@@ -25,7 +28,7 @@ func executePostHooks(ctx context.Context, toolName string, hookNames []string, 
 			"tool_name":  toolName,
 		})
 	} else {
-		log.Infof("Executing %d post hooks for tool %s", len(hookNames), toolName)
+		chainLogger.Infof("Executing %d post hooks for tool %s", len(hookNames), toolName)
 	}
 
 	for _, hookName := range hookNames {
@@ -40,7 +43,7 @@ func executePostHooks(ctx context.Context, toolName string, hookNames []string, 
 						"tool_name": toolName,
 					})
 				} else {
-					log.Warnf("Post hook %s not found for tool %s", hookName, toolName)
+					chainLogger.Warnf("Post hook %s not found for tool %s", hookName, toolName)
 				}
 				continue
 			}
@@ -60,7 +63,7 @@ func executePostHooks(ctx context.Context, toolName string, hookNames []string, 
 						"error":     err,
 					})
 				} else {
-					log.Errorf("Post hook %s failed for tool %s: %v", hookName, toolName, err)
+					chainLogger.Errorf("Post hook %s failed for tool %s: %v", hookName, toolName, err)
 				}
 				return errors.NewToolError(toolName, fmt.Errorf("post hook %s failed: %w", hookName, err))
 			}
@@ -81,7 +84,7 @@ func executePostHooks(ctx context.Context, toolName string, hookNames []string, 
 						"error":     err,
 					})
 				} else {
-					log.Errorf("Post hook %s failed for tool %s: %v", hookName, toolName, err)
+					chainLogger.Errorf("Post hook %s failed for tool %s: %v", hookName, toolName, err)
 				}
 				return errors.NewToolError(toolName, fmt.Errorf("post hook %s failed: %w", hookName, err))
 			}
@@ -93,7 +96,7 @@ func executePostHooks(ctx context.Context, toolName string, hookNames []string, 
 				"tool_name": toolName,
 			})
 		} else {
-			log.Infof("Post hook %s completed successfully for tool %s", hookName, toolName)
+			chainLogger.Infof("Post hook %s completed successfully for tool %s", hookName, toolName)
 		}
 	}
 
@@ -108,7 +111,7 @@ func executeStageHooks(ctx context.Context, stage Stage, stageName string, optio
 		return nil
 	}
 
-	log.Infof("Executing %d stage hooks for stage %s", len(hooks), stageName)
+	chainLogger.Infof("Executing %d stage hooks for stage %s", len(hooks), stageName)
 
 	// Run stage hooks concurrently but wait for all to complete
 	var wg sync.WaitGroup
@@ -125,10 +128,10 @@ func executeStageHooks(ctx context.Context, stage Stage, stageName string, optio
 				Options:   options,
 			}
 			if err := h.ExecuteForStage(hookCtx); err != nil {
-				log.Errorf("Stage hook %s failed for stage %s: %v", h.Name(), stageName, err)
+				chainLogger.Errorf("Stage hook %s failed for stage %s: %v", h.Name(), stageName, err)
 				errChan <- fmt.Errorf("stage hook %s failed for stage %s: %w", h.Name(), stageName, err)
 			} else {
-				log.Infof("Stage hook %s completed successfully for stage %s", h.Name(), stageName)
+				chainLogger.Infof("Stage hook %s completed successfully for stage %s", h.Name(), stageName)
 			}
 		}(hook)
 	}
@@ -144,7 +147,7 @@ func executeStageHooks(ctx context.Context, stage Stage, stageName string, optio
 		}
 	}
 
-	log.Infof("All stage hooks for stage %s completed successfully", stageName)
+	chainLogger.Infof("All stage hooks for stage %s completed successfully", stageName)
 	return nil
 }
 
@@ -165,7 +168,7 @@ type ExecutionStrategy interface {
 type SequentialStrategy struct{}
 
 func (s *SequentialStrategy) Run(ctx context.Context, tools []Tool, options *Options) error {
-	log.Info("Executing tools sequentially")
+	chainLogger.Info("Executing tools sequentially")
 
 	tracker := newStageTracker(tools)
 	successCount := 0
@@ -184,11 +187,11 @@ func (s *SequentialStrategy) Run(ctx context.Context, tools []Tool, options *Opt
 		// Check if a stage completed
 		completedStage := tracker.markCompleted(tool.Name())
 		if completedStage != "" {
-			log.Infof("Stage %s completed. Triggering stage hooks...", completedStage)
+			chainLogger.Infof("Stage %s completed. Triggering stage hooks...", completedStage)
 
 			// Execute system-controlled stage hooks
 			if err := executeStageHooks(ctx, completedStage, string(completedStage), options); err != nil {
-				log.Errorf("Stage hooks failed for stage %s: %v", completedStage, err)
+				chainLogger.Errorf("Stage hooks failed for stage %s: %v", completedStage, err)
 				// Don't fail the entire pipeline for stage hook failures, just log
 			}
 		}
@@ -196,14 +199,14 @@ func (s *SequentialStrategy) Run(ctx context.Context, tools []Tool, options *Opt
 		successCount++
 	}
 
-	log.Infof("All %d tools completed successfully", successCount)
+	chainLogger.Infof("All %d tools completed successfully", successCount)
 	return nil
 }
 
 type ConcurrentStrategy struct{}
 
 func (s *ConcurrentStrategy) Run(ctx context.Context, tools []Tool, options *Options) error {
-	log.Info("Executing tools concurrently")
+	chainLogger.Info("Executing tools concurrently")
 
 	tracker := newStageTracker(tools)
 	var wg sync.WaitGroup
@@ -266,16 +269,16 @@ func (s *ConcurrentStrategy) Run(ctx context.Context, tools []Tool, options *Opt
 			} else {
 				completedList = append(completedList, tool)
 				successCount++
-				log.Infof("Tool %s completed successfully", tool.Name())
+				chainLogger.Infof("Tool %s completed successfully", tool.Name())
 			}
 		}
 	}
 
 	// If there were errors, don't proceed with hooks
 	if len(errors) > 0 {
-		log.Errorf("Concurrent execution completed with %d error(s)", len(errors))
+		chainLogger.Errorf("Concurrent execution completed with %d error(s)", len(errors))
 		for _, e := range errors {
-			log.Errorf("  %s: %v", e.tool, e.err)
+			chainLogger.Errorf("  %s: %v", e.tool, e.err)
 		}
 		return fmt.Errorf("%d tool(s) failed", len(errors))
 	}
@@ -283,31 +286,31 @@ func (s *ConcurrentStrategy) Run(ctx context.Context, tools []Tool, options *Opt
 	// Execute post hooks for all completed tools sequentially
 	for _, tool := range completedList {
 		if err := executePostHooks(ctx, tool.Name(), tool.PostHooks(), options); err != nil {
-			log.Errorf("Post hooks failed for tool %s: %v", tool.Name(), err)
+			chainLogger.Errorf("Post hooks failed for tool %s: %v", tool.Name(), err)
 			return fmt.Errorf("post hooks failed for tool %s: %w", tool.Name(), err)
 		}
 
 		// Check if a stage completed after this tool
 		completedStage := tracker.markCompleted(tool.Name())
 		if completedStage != "" {
-			log.Infof("Stage %s completed. Triggering stage hooks...", completedStage)
+			chainLogger.Infof("Stage %s completed. Triggering stage hooks...", completedStage)
 
 			// Execute system-controlled stage hooks
 			if err := executeStageHooks(ctx, completedStage, string(completedStage), options); err != nil {
-				log.Errorf("Stage hooks failed for stage %s: %v", completedStage, err)
+				chainLogger.Errorf("Stage hooks failed for stage %s: %v", completedStage, err)
 				// Don't fail the entire pipeline for stage hook failures, just log
 			}
 		}
 	}
 
-	log.Infof("All %d tools completed successfully", successCount)
+	chainLogger.Infof("All %d tools completed successfully", successCount)
 	return nil
 }
 
 type HybridStrategy struct{}
 
 func (hybrid *HybridStrategy) Run(ctx context.Context, tools []Tool, options *Options) error {
-	log.Info("Executing tools in hybrid (DAG-based)")
+	chainLogger.Info("Executing tools in hybrid (DAG-based)")
 
 	// Build and validate the graph
 	g, err := newDepGraph(tools)
@@ -325,7 +328,7 @@ func (hybrid *HybridStrategy) Run(ctx context.Context, tools []Tool, options *Op
 	if workers < 1 {
 		workers = 1
 	}
-	log.Infof("Hybrid DAG workers: %d", workers)
+	chainLogger.Infof("Hybrid DAG workers: %d", workers)
 
 	ready := make(chan Tool, len(tools))
 	results := make(chan runResult, len(tools))
@@ -338,7 +341,7 @@ func (hybrid *HybridStrategy) Run(ctx context.Context, tools []Tool, options *Op
 
 	// Seed initial ready tools
 	for _, t := range g.initialReady() {
-		log.Debugf("Initial ready: %s", t.Name())
+		chainLogger.Infof("Initial ready: %s", t.Name())
 		ready <- t
 	}
 
@@ -347,20 +350,20 @@ func (hybrid *HybridStrategy) Run(ctx context.Context, tools []Tool, options *Op
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
-			log.Debugf("Worker %d started", workerID)
+			chainLogger.Infof("Worker %d started", workerID)
 
 			for {
 				select {
 				case <-workerCtx.Done():
-					log.Debugf("Worker %d stopping due to context cancellation", workerID)
+					chainLogger.Infof("Worker %d stopping due to context cancellation", workerID)
 					return
 				case t, ok := <-ready:
 					if !ok {
-						log.Debugf("Worker %d stopping - ready channel closed", workerID)
+						chainLogger.Infof("Worker %d stopping - ready channel closed", workerID)
 						return
 					}
 
-					log.Debugf("Worker %d executing tool %s", workerID, t.Name())
+					chainLogger.Infof("Worker %d executing tool %s", workerID, t.Name())
 					runErr := t.Run(workerCtx, options)
 
 					select {
@@ -394,14 +397,14 @@ func (hybrid *HybridStrategy) Run(ctx context.Context, tools []Tool, options *Op
 			success := (r.err == nil)
 			if !success {
 				errs = append(errs, toolError{tool: r.name, err: r.err})
-				log.Errorf("Tool %s failed: %v", r.name, r.err)
+				chainLogger.Errorf("Tool %s failed: %v", r.name, r.err)
 			} else {
-				log.Infof("Tool %s completed successfully", r.name)
+				chainLogger.Infof("Tool %s completed successfully", r.name)
 
 				// Execute post hooks for this specific tool
 				if tool := findToolByName(tools, r.name); tool != nil {
 					if err := executePostHooks(ctx, tool.Name(), tool.PostHooks(), options); err != nil {
-						log.Errorf("Post hooks failed for tool %s: %v", tool.Name(), err)
+						chainLogger.Errorf("Post hooks failed for tool %s: %v", tool.Name(), err)
 						// Mark as failed since post hooks failed
 						errs = append(errs, toolError{tool: r.name, err: err})
 						success = false
@@ -411,11 +414,11 @@ func (hybrid *HybridStrategy) Run(ctx context.Context, tools []Tool, options *Op
 
 			completedStage := tracker.markCompleted(r.name)
 			if completedStage != "" {
-				log.Infof("Stage %s completed. Triggering stage hooks...", completedStage)
+				chainLogger.Infof("Stage %s completed. Triggering stage hooks...", completedStage)
 
 				// Execute system-controlled stage hooks
 				if err := executeStageHooks(ctx, completedStage, string(completedStage), options); err != nil {
-					log.Errorf("Stage hooks failed for stage %s: %v", completedStage, err)
+					chainLogger.Errorf("Stage hooks failed for stage %s: %v", completedStage, err)
 					// Don't fail the entire pipeline for stage hook failures, just log
 				}
 			}
@@ -424,7 +427,7 @@ func (hybrid *HybridStrategy) Run(ctx context.Context, tools []Tool, options *Op
 			for _, s := range skipped {
 				doneCount++
 				errs = append(errs, toolError{tool: s, err: fmt.Errorf("skipped due to failed dependency")})
-				log.Warnf("Tool %s skipped (failed dependency)", s)
+				chainLogger.Warnf("Tool %s skipped (failed dependency)", s)
 			}
 			for _, t := range newReady {
 				select {
@@ -437,19 +440,15 @@ func (hybrid *HybridStrategy) Run(ctx context.Context, tools []Tool, options *Op
 	}
 
 	if len(errs) > 0 {
-		log.Errorf("Hybrid DAG execution completed with %d error(s)", len(errs))
+		chainLogger.Errorf("Hybrid DAG execution completed with %d error(s)", len(errs))
 		for _, e := range errs {
-			log.Errorf("  %s: %v", e.tool, e.err)
+			chainLogger.Errorf("  %s: %v", e.tool, e.err)
 		}
 		return fmt.Errorf("%d tool(s) failed", len(errs))
 	}
 
-	log.Infof("All %d tools completed successfully", total)
+	chainLogger.Infof("All %d tools completed successfully", total)
 	return nil
-}
-
-type CommandRunner interface {
-	Run(ctx context.Context, command string, args []string) error
 }
 
 type toolError struct {

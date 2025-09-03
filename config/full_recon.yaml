@@ -11,7 +11,7 @@ tools:
         required: true
       - flag: "-o"
         option: "Output"
-        default: "subfinder_output.txt"
+        default: "subdomain_subfinder_output.txt"
 
   - name: findomain
     description: Subdomain enumeration
@@ -58,6 +58,33 @@ tools:
         is_boolean: true
       - flag: "-t"
         default: "20"
+  
+  - name: ffuf
+    description: Fuzzing tool for discovering hidden resources
+    command: ffuf
+    type: recon
+    replace: "{{URL}}"
+    replace_from: "httpx_output.txt"
+    depends_on: ["httpxbb"]
+    flags:
+      - flag: "-u"
+        option: "Input"
+        default: "{{URL}}/FUZZ"
+      - flag: "-w"
+        option: "Wordlist"
+        default: "/home/alesawe/bbtools/data/httparchive_apiroutes_2025_07_27.txt"
+      - flag: "-mc"
+        description: "Match response code"
+        default: "200"
+      - flag: "-fs"
+        description: "filter out 0 response sizes"
+        default: "0"
+      - flag: "-t"
+        default: "5"
+      - flag: "-o"
+        description: "output flag"
+        option: "Output"
+        default: "{{URL}}_ffuf_output.json"
 
   - name: gowitness
     description: Web screenshot
@@ -96,5 +123,8 @@ tools:
       - flag: "-pt"
         option: "Protocol types"
         default: "http,dns"
+      - flag: "-c"
+        option: "Concurrency"
+        default: "5"
     posthooks:
       - "NotifierHook"

@@ -22,7 +22,7 @@ type Options struct {
 // DefaultOptions returns a new Options instance with sensible defaults
 func DefaultOptions() *Options {
 	return &Options{
-		Timeout:     2 * time.Hour, // Increased from 30 minutes to 2 hours for long-running tools
+		Timeout:     2 * time.Hour,
 		WorkingDir:  ".",
 		Environment: make(map[string]string),
 		DryRun:      false,
@@ -58,6 +58,8 @@ type ToolConfig struct {
 	Description string        `yaml:"description"`
 	Type        string        `yaml:"type" mapstructure:"type"`
 	Command     string        `yaml:"command"`
+	Replace     string        `yaml:"replace,omitempty"`
+	ReplaceFrom string        `yaml:"replace_from,omitempty" mapstructure:"replace_from"`
 	Flags       []FlagConfig  `yaml:"flags"`
 	DependsOn   []string      `yaml:"depends_on" mapstructure:"depends_on"`
 	Timeout     time.Duration `yaml:"timeout,omitempty" mapstructure:"timeout"`

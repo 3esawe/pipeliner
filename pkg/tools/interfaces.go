@@ -11,33 +11,19 @@ type Tool interface {
 	PostHooks() []string
 }
 
-// ProgressReporter allows tools to report their execution progress
-type ProgressReporter interface {
-	ReportProgress(event ProgressEvent)
+// CommandRunner is the unified interface for command execution
+type CommandRunner interface {
+	Run(ctx context.Context, command string, args []string) error
 }
 
-// ConfigValidator validates tool configurations
-type ConfigValidator interface {
-	ValidateConfig() error
+// ReplacementCommandRunner extends CommandRunner with replacement capabilities
+type ReplacementCommandRunner interface {
+	CommandRunner
+	RunWithReplacement(ctx context.Context, command string, args []string, replaceToken, replaceFromFile string) error
 }
 
-// ResourceManager handles resource allocation and cleanup for tools
-type ResourceManager interface {
-	AllocateResources(toolName string) error
-	ReleaseResources(toolName string) error
-}
-
-// CommandExecutor defines how commands are executed
-type CommandExecutor interface {
-	Execute(ctx context.Context, command string, args []string) error
-}
-
-// NotificationSender sends notifications
-type NotificationSender interface {
-	SendMessage(message string) error
-}
-
-// FileWatcher watches for file system events
-type FileWatcher interface {
-	Watch(ctx context.Context, path string) error
+// ToolRegistry provides access to tool configurations for dynamic resolution
+type ToolRegistry interface {
+	GetToolConfig(name string) (*ToolConfig, bool)
+	GetAllToolConfigs() map[string]*ToolConfig
 }

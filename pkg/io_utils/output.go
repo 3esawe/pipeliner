@@ -5,17 +5,19 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"pipeliner/pkg/logger"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 var (
 	procMutex      sync.Mutex
 	procMap        = make(map[string]bool)
+	fileLogger     = logger.NewLogger(logrus.InfoLevel)
 	textExtensions = map[string]bool{
 		".log": true, ".txt": true, ".csv": true, ".json": true,
 	}
@@ -23,42 +25,42 @@ var (
 
 func WatchDirectory(ctx context.Context) {
 	path, _ := os.Getwd()
-	log.Infof("Watching directory: %s", path)
+	fileLogger.WithFields(logger.Fields{"path": path}).Info("Watching directory")
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		log.Error(err)
+		logger.Error(err)
 		return
 	}
 	defer func() {
 		if closeErr := watcher.Close(); closeErr != nil {
-			log.Errorf("Error closing watcher: %v", closeErr)
+			fileLogger.Errorf("Error closing watcher: %v", closeErr)
 		}
 	}()
 
 	fileInfo, err := os.Stat(path)
 	if err != nil {
-		log.Errorf("Directory does not exist: %s", path)
+		fileLogger.Errorf("Directory does not exist: %s", path)
 		return
 	}
 	if !fileInfo.IsDir() {
-		log.Errorf("%s is not a directory", path)
+		fileLogger.Errorf("%s is not a directory", path)
 		return
 	}
 
 	// Add the path to watcher first, before starting the goroutine
 	if err := watcher.Add(path); err != nil {
-		log.Errorf("Error adding path to watcher: %v", err)
+		fileLogger.Errorf("Error adding path to watcher: %v", err)
 		return
 	}
 
 	go func() {
-		defer log.Info("File watcher goroutine stopped")
+		defer logger.Info("File watcher goroutine stopped")
 
 		for {
 			select {
 			case event, ok := <-watcher.Events:
 				if !ok {
-					log.Debug("Watcher events channel closed")
+					fileLogger.Debug("Watcher events channel closed")
 					return
 				}
 
@@ -73,7 +75,7 @@ func WatchDirectory(ctx context.Context) {
 				// Process write events
 				fi, err := os.Stat(event.Name)
 				if err != nil {
-					log.Errorf("Error stating %s: %v", event.Name, err)
+					fileLogger.Errorf("Error stating %s: %v", event.Name, err)
 					continue
 				}
 				if fi.IsDir() {
@@ -103,7 +105,7 @@ func WatchDirectory(ctx context.Context) {
 
 					select {
 					case <-fileCtx.Done():
-						log.Warnf("File processing timed out for %s", file)
+						fileLogger.Warnf("File processing timed out for %s", file)
 						return
 					default:
 						handleDuplicate(file)
@@ -112,13 +114,13 @@ func WatchDirectory(ctx context.Context) {
 
 			case err, ok := <-watcher.Errors:
 				if !ok {
-					log.Debug("Watcher errors channel closed")
+					fileLogger.Debug("Watcher errors channel closed")
 					return
 				}
-				log.Errorf("Watcher error: %v", err)
+				fileLogger.Errorf("Watcher error: %v", err)
 
 			case <-ctx.Done():
-				log.Info("Watcher context cancelled, stopping...")
+				logger.Info("Watcher context cancelled, stopping...")
 				return
 			}
 		}
@@ -126,7 +128,7 @@ func WatchDirectory(ctx context.Context) {
 
 	// Block until context is done
 	<-ctx.Done()
-	log.Info("Directory watcher stopped")
+	logger.Info("Directory watcher stopped")
 }
 
 func isTextFile(filePath string) bool {
@@ -137,7 +139,7 @@ func isTextFile(filePath string) bool {
 func handleDuplicate(path string) {
 	fi, err := os.Stat(path)
 	if err != nil {
-		log.Errorf("Error stating file %s: %v", path, err)
+		fileLogger.Errorf("Error stating file %s: %v", path, err)
 		return
 	}
 	if fi.IsDir() {
@@ -146,7 +148,7 @@ func handleDuplicate(path string) {
 
 	content, err := os.ReadFile(path)
 	if err != nil {
-		log.Errorf("Error reading file %s: %v", path, err)
+		fileLogger.Errorf("Error reading file %s: %v", path, err)
 		return
 	}
 
@@ -180,6 +182,6 @@ func handleDuplicate(path string) {
 	newContent := strings.Join(newLines, "\n")
 	err = os.WriteFile(path, []byte(newContent), fi.Mode().Perm())
 	if err != nil {
-		log.Errorf("Error writing file %s: %v", path, err)
+		fileLogger.Errorf("Error writing file %s: %v", path, err)
 	}
 }

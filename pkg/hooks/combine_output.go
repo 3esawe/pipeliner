@@ -5,11 +5,23 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"pipeliner/pkg/logger"
 	"pipeliner/pkg/tools"
 	"strings"
+
+	"github.com/sirupsen/logrus"
 )
 
-type CombineOutput struct{}
+type CombineOutput struct {
+	logger *logger.Logger
+}
+
+// NewCombineOutput creates a new CombineOutput hook
+func NewCombineOutput() *CombineOutput {
+	return &CombineOutput{
+		logger: logger.NewLogger(logrus.InfoLevel),
+	}
+}
 
 func (c *CombineOutput) Name() string {
 	return "combine_output"

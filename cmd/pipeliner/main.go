@@ -310,12 +310,10 @@ func main() {
 
 func initHooks() {
 	// Create hook instances
-	combineOutput := &hooks.CombineOutput{}
-	notifierHook := &hooks.NotifierHook{
-		Config: hooks.NotifierHookConfig{
-			Filename: "nuclei_output.txt",
-		},
-	}
+	combineOutput := hooks.NewCombineOutput()
+	notifierHook := hooks.NewNotifierHook(hooks.NotifierHookConfig{
+		Filename: "nuclei_output.txt",
+	})
 
 	// =====================================
 	// STAGE HOOKS (System-controlled)
@@ -337,7 +335,4 @@ func initHooks() {
 	// NotifierHook: Can be used for individual tool notifications
 	tools.RegisterPostHook("NotifierHook", notifierHook)
 
-	// NOTE: CombineOutput is intentionally NOT available as a PostHook
-	// because it needs ALL domain enumeration tools to complete first,
-	// not just individual tools
 }

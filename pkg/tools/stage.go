@@ -1,10 +1,14 @@
 package tools
 
 import (
+	"pipeliner/pkg/logger"
 	"sync"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
+
+// Package-level logger for stage operations
+var stageLogger = logger.NewLogger(logrus.InfoLevel)
 
 type Stage string
 
@@ -83,7 +87,7 @@ var stageHooks = make(map[Stage][]StageHook)
 // This is system-controlled - runs once per stage completion
 func RegisterStageHook(stage Stage, hook StageHook) {
 	stageHooks[stage] = append(stageHooks[stage], hook)
-	log.Debugf("Registered stage hook: %s for stage %s", hook.Name(), stage)
+	stageLogger.Infof("Registered stage hook: %s for stage %s", hook.Name(), stage)
 }
 
 // GetStageHooks returns hooks registered for a specific stage

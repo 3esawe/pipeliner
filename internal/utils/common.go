@@ -4,12 +4,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"pipeliner/pkg/logger"
 	"strings"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
+
+// Package-level logger for utils
+var utilsLogger = logger.NewLogger(logrus.InfoLevel)
 
 // ConfigOptions holds configuration loading options
 type ConfigOptions struct {
@@ -62,7 +66,7 @@ func NewViperConfigWithOptions(opts ConfigOptions) (*viper.Viper, error) {
 		v.SetDefault(key, value)
 	}
 
-	log.Infof("Searching for config file: %s in paths: %v", opts.ConfigName, configPaths)
+	utilsLogger.Infof("Searching for config file: %s in paths: %v", opts.ConfigName, configPaths)
 
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
@@ -71,7 +75,7 @@ func NewViperConfigWithOptions(opts ConfigOptions) (*viper.Viper, error) {
 		return nil, fmt.Errorf("error reading config file: %w", err)
 	}
 
-	log.Infof("Loaded config file: %s", v.ConfigFileUsed())
+	utilsLogger.Infof("Loaded config file: %s", v.ConfigFileUsed())
 	return v, nil
 }
 
@@ -110,24 +114,24 @@ func CreateAndChangeScanDirectoryWithOptions(opts ScanDirectoryOptions) (string,
 
 	// Create the directory with proper permissions
 	if err := os.MkdirAll(dir, opts.Permissions); err != nil {
-		log.Errorf("Error creating scan directory: %v", err)
+		utilsLogger.Errorf("Error creating scan directory: %v", err)
 		return "", fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
 
 	// Get absolute path before changing directory
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
-		log.Errorf("Error getting absolute path: %v", err)
+		utilsLogger.Errorf("Error getting absolute path: %v", err)
 		return dir, fmt.Errorf("failed to get absolute path for %s: %w", dir, err)
 	}
 
 	// Change to the new directory
 	if err := os.Chdir(absDir); err != nil {
-		log.Errorf("Error changing to scan directory: %v", err)
+		utilsLogger.Errorf("Error changing to scan directory: %v", err)
 		return absDir, fmt.Errorf("failed to change directory to %s: %w", absDir, err)
 	}
 
-	log.Infof("Created and changed to scan directory: %s", absDir)
+	utilsLogger.Infof("Created and changed to scan directory: %s", absDir)
 	return absDir, nil
 }
 
