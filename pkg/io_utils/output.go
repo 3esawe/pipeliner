@@ -91,7 +91,6 @@ func WatchDirectory(ctx context.Context) {
 				procMap[event.Name] = true
 				procMutex.Unlock()
 
-				// Process file in goroutine with proper cleanup
 				go func(file string) {
 					defer func() {
 						procMutex.Lock()
@@ -99,7 +98,6 @@ func WatchDirectory(ctx context.Context) {
 						procMutex.Unlock()
 					}()
 
-					// Add timeout context for file processing
 					fileCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 					defer cancel()
 

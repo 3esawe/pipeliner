@@ -7,16 +7,14 @@ import (
 	"time"
 )
 
-// Options represents the execution options for pipeline tools
 type Options struct {
-	ScanType string
-	Domain   string
-	// Add more fields as needed
+	ScanType    string
+	Domain      string
 	Timeout     time.Duration
 	WorkingDir  string
 	Environment map[string]string
 	DryRun      bool
-	Logger      *logger.Logger // Added logger field
+	Logger      *logger.Logger
 }
 
 // DefaultOptions returns a new Options instance with sensible defaults
@@ -26,7 +24,7 @@ func DefaultOptions() *Options {
 		WorkingDir:  ".",
 		Environment: make(map[string]string),
 		DryRun:      false,
-		Logger:      nil, // Logger should be set by the caller
+		Logger:      nil,
 	}
 }
 
@@ -98,6 +96,7 @@ func (fc *FlagConfig) Validate() error {
 }
 
 type ChainConfig struct {
+	Description   string        `yaml:"description"`
 	ExecutionMode string        `yaml:"execution_mode"`
 	Tools         []ToolConfig  `yaml:"tools"`
 	GlobalTimeout time.Duration `yaml:"global_timeout,omitempty" mapstructure:"global_timeout"`

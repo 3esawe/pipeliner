@@ -1,0 +1,42 @@
+package templates
+
+templ Base(title string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>{ title } - Pipeliner</title>
+			<script src="https://cdn.tailwindcss.com"></script>
+			<script src="https://unpkg.com/htmx.org@1.9.10"></script>
+		</head>
+		<body class="bg-gray-50 min-h-screen">
+			<!-- Navigation Bar -->
+			<nav class="bg-white shadow-sm border-b">
+				<div class="container mx-auto px-6 py-4">
+					<div class="flex items-center justify-between">
+						<div class="flex items-center space-x-4">
+							<a href="/" class="text-xl font-bold text-gray-900">Pipeliner</a>
+							<span class="text-gray-500">|</span>
+							<nav class="flex space-x-4">
+								<a href="/" class="text-gray-600 hover:text-blue-600 transition-colors">Home</a>
+								<a href="/config" class="text-gray-600 hover:text-blue-600 transition-colors">Configurations</a>
+								<a href="/scans" class="text-gray-600 hover:text-blue-600 transition-colors">Scans</a>
+							</nav>
+						</div>
+					</div>
+				</div>
+			</nav>
+			<!-- Main Content -->
+			<main>
+				{ children... }
+			</main>
+			<!-- Footer (optional) -->
+			<footer class="bg-white border-t mt-16">
+				<div class="container mx-auto px-6 py-4 text-center text-gray-500">
+					<p>&copy; 2025 Pipeliner. Built for security automation.</p>
+				</div>
+			</footer>
+		</body>
+	</html>
+}

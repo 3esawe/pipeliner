@@ -24,6 +24,7 @@ type EnginePiplinerOpts struct {
 	runner   tools.CommandRunner
 	periodic int
 	notifier *notification.NotificationClient
+	scanDir  string
 	logger   *logger.Logger
 }
 
@@ -117,6 +118,24 @@ func (e *PiplinerEngine) PrepareScan(options *tools.Options) error {
 
 		go output.WatchDirectory(e.ctx)
 	}
+	return nil
+}
+
+func (e *PiplinerEngine) RunHTTP(scanType, domain string) (err error) {
+	if dir, err := utils.CreateAndChangeScanDirectory(scanType, domain); err != nil {
+		e.logger.Error("Failed to create scan directory:", logger.Fields{"error": err})
+		return fmt.Errorf("failed to create scan directory: %w", err)
+	} else {
+		e.scanDir = dir
+	}
+
+	e.logger.Info("Starting HTTP scan for", logger.Fields{"domain": domain, "module": scanType})
+	if err := e.runTools(); err != nil {
+		e.logger.Error("HTTP scan failed", logger.Fields{"error": err})
+		return errors.ErrToolExecutionFailed
+	}
+
+	e.logger.Info("HTTP scan completed for", logger.Fields{"domain": domain, "module": scanType})
 	return nil
 }
 

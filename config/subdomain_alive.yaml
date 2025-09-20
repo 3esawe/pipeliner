@@ -2,16 +2,17 @@
 description: "Subdomain enumeration with HTTP probing to identify live subdomains"
 execution_mode: sequential
 tools:
-  - name: subfinder
-    description: Subdomain discovery
-    command: subfinder
+  - name: findomain
+    description: Subdomain enumeration
+    type: domain_enum
+    command: findomain
     flags:
-      - flag: "-d"
+      - flag: "-t"
         option: "Domain"
         required: true
-      - flag: "-o"
+      - flag: "-u"
         option: "Output"
-        default: "subfinder_output.txt"
+        default: "subdomain_findomain_output.txt"
         
   - name: httpxbb
     description: httpx for probing discovered subdomains
@@ -19,7 +20,7 @@ tools:
     flags:
       - flag: "-l"  
         option: "Input"
-        default: "subfinder_output.txt"
+        default: "subdomain_findomain_output.txt"
       - flag: "-o"
         option: "Output"
         default: "httpx_output.txt"

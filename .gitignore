@@ -9,3 +9,5 @@ bin/
 bin/pipeliner
 process_thinking
 .vscode/
+node_modules/
+.DS_Store

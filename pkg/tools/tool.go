@@ -40,7 +40,6 @@ func NewConfigurableTool(name string, tool_type string, config ToolConfig, runne
 	}
 }
 
-// NewConfigurableToolWithLogger creates a tool with a specific logger
 func NewConfigurableToolWithLogger(name string, tool_type string, config ToolConfig, runner CommandRunner, lgr *logger.Logger) Tool {
 	return &ConfigurableTool{
 		name:         name,
