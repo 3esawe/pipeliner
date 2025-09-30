@@ -1,13 +1,14 @@
 package handlers
 
 import (
+	"errors"
 	"pipeliner/internal/models"
 	"pipeliner/internal/services"
 	"pipeliner/pkg/logger"
-	"pipeliner/templates"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 )
 
 type ScanHandler struct {
@@ -17,11 +18,6 @@ type ScanHandler struct {
 
 func NewScanHandler(scanService services.ScanServiceMethods) *ScanHandler {
 	return &ScanHandler{scanService: scanService, logger: logger.NewLogger(logrus.Level(logrus.InfoLevel))}
-}
-
-func (h *ScanHandler) HomePage(c *gin.Context) {
-	c.Status(200)
-	templates.Home().Render(c, c.Writer)
 }
 
 func (h *ScanHandler) StartScan(c *gin.Context) {
@@ -59,4 +55,36 @@ func (h *ScanHandler) GetScanByUUID(c *gin.Context) {
 		return
 	}
 	c.JSON(200, scan)
+}
+
+func (h *ScanHandler) ListScans(c *gin.Context) {
+	scans, err := h.scanService.ListScans()
+	if err != nil {
+		h.logger.Error("Failed to list scans:", logger.Fields{"error": err})
+		c.JSON(500, gin.H{"error": "Failed to list scans"})
+		return
+	}
+	c.JSON(200, scans)
+}
+
+func (h *ScanHandler) DeleteScan(c *gin.Context) {
+	scanID := c.Param("id")
+	if scanID == "" {
+		h.logger.Error("Scan ID missing in delete request")
+		c.JSON(400, gin.H{"error": "Scan ID is required"})
+		return
+	}
+
+	if err := h.scanService.DeleteScan(scanID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			h.logger.Warn("Scan not found for deletion", logger.Fields{"scan_id": scanID})
+			c.JSON(404, gin.H{"error": "Scan not found"})
+			return
+		}
+		h.logger.Error("Failed to delete scan", logger.Fields{"error": err, "scan_id": scanID})
+		c.JSON(500, gin.H{"error": "Failed to delete scan"})
+		return
+	}
+
+	c.Status(204)
 }

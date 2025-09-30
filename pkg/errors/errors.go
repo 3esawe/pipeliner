@@ -1,4 +1,3 @@
-// Package errors defines common error types used throughout the pipeliner application
 package errors
 
 import (
@@ -6,7 +5,6 @@ import (
 	"fmt"
 )
 
-// Sentinel errors for common failure scenarios
 var (
 	ErrToolNotFound         = errors.New("tool not found")
 	ErrInvalidConfig        = errors.New("invalid configuration")
@@ -15,7 +13,6 @@ var (
 	ErrDiscordNotConfigured = errors.New("discord client not configured")
 )
 
-// ToolError represents an error that occurred during tool execution
 type ToolError struct {
 	ToolName string
 	Err      error
@@ -29,7 +26,6 @@ func (e *ToolError) Unwrap() error {
 	return e.Err
 }
 
-// NewToolError creates a new tool error
 func NewToolError(toolName string, err error) *ToolError {
 	return &ToolError{
 		ToolName: toolName,
@@ -37,7 +33,6 @@ func NewToolError(toolName string, err error) *ToolError {
 	}
 }
 
-// ConfigError represents a configuration-related error
 type ConfigError struct {
 	Field   string
 	Value   interface{}
@@ -48,7 +43,6 @@ func (e *ConfigError) Error() string {
 	return fmt.Sprintf("config error for field %s (value: %v): %s", e.Field, e.Value, e.Message)
 }
 
-// NewConfigError creates a new configuration error
 func NewConfigError(field string, value interface{}, message string) *ConfigError {
 	return &ConfigError{
 		Field:   field,

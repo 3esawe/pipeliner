@@ -96,6 +96,7 @@ func (fc *FlagConfig) Validate() error {
 }
 
 type ChainConfig struct {
+	Name          string        `yaml:"name"`
 	Description   string        `yaml:"description"`
 	ExecutionMode string        `yaml:"execution_mode"`
 	Tools         []ToolConfig  `yaml:"tools"`

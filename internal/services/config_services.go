@@ -2,6 +2,7 @@ package services
 
 import (
 	"os"
+	"path/filepath"
 	"pipeliner/pkg/logger"
 	"pipeliner/pkg/tools"
 	"strings"
@@ -15,20 +16,25 @@ type ConfigServiceMethods interface {
 }
 
 type configService struct {
-	log *logger.Logger
+	log        *logger.Logger
+	configPath string
 }
 
 func NewConfigService() ConfigServiceMethods {
+	configPath, err := filepath.Abs("./config")
+	if err != nil {
+		configPath = "./config"
+	}
+
 	return &configService{
-		log: logger.NewLogger(logrus.Level(logrus.InfoLevel)),
+		log:        logger.NewLogger(logrus.Level(logrus.InfoLevel)),
+		configPath: configPath,
 	}
 }
 
 func (c *configService) GetScanModules() []tools.ChainConfig {
 
-	configPath := "./config"
-
-	files, err := os.ReadDir(configPath)
+	files, err := os.ReadDir(c.configPath)
 	if err != nil {
 		c.log.WithError(err).Error("Failed to read config directory")
 		return nil
@@ -41,7 +47,7 @@ func (c *configService) GetScanModules() []tools.ChainConfig {
 			continue
 		}
 
-		data, err := os.ReadFile(configPath + "/" + file.Name())
+		data, err := os.ReadFile(c.configPath + "/" + file.Name())
 		if err != nil {
 			c.log.WithError(err).WithField("file", file.Name()).Error("Failed to read config file")
 			continue

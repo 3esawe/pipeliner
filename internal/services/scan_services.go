@@ -21,6 +21,8 @@ import (
 type ScanServiceMethods interface {
 	StartScan(scan *models.Scan) (string, error)
 	GetScanByUUID(id string) (*models.Scan, error)
+	ListScans() ([]models.Scan, error)
+	DeleteScan(id string) error
 }
 
 type scanService struct {
@@ -37,11 +39,6 @@ func (s *scanService) StartScan(scan *models.Scan) (string, error) {
 	scan.UUID = id
 	scan.Status = "started"
 
-	if err := s.scanDao.SaveScan(scan); err != nil {
-		s.logger.Error("SaveScan failed", logger.Fields{"error": err})
-		return "", err
-	}
-
 	e, err := engine.NewPiplinerEngine()
 	if err != nil {
 		s.logger.Error("Failed to create engine", logger.Fields{"error": err})
@@ -56,9 +53,13 @@ func (s *scanService) StartScan(scan *models.Scan) (string, error) {
 		return "", err
 	}
 
+	if err := s.scanDao.SaveScan(scan); err != nil {
+		s.logger.Error("SaveScan failed", logger.Fields{"error": err})
+		return "", err
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Start monitoring before starting the scan
 	go s.monitorScanProgress(scan, ctx)
 
 	go func(scanID, scanType, domain string) {
@@ -87,6 +88,14 @@ func (s *scanService) StartScan(scan *models.Scan) (string, error) {
 
 func (s *scanService) GetScanByUUID(id string) (*models.Scan, error) {
 	return s.scanDao.GetScanByUUID(id)
+}
+
+func (s *scanService) ListScans() ([]models.Scan, error) {
+	return s.scanDao.ListScans()
+}
+
+func (s *scanService) DeleteScan(id string) error {
+	return s.scanDao.DeleteScan(id)
 }
 
 func (s *scanService) monitorScanProgress(scan *models.Scan, ctx context.Context) {
@@ -122,7 +131,7 @@ func (s *scanService) getFilesToMonitor(scanType string) []FileMonitorConfig {
 
 func (s *scanService) waitForFile(filePath string, ctx context.Context) bool {
 	if _, err := os.Stat(filePath); err == nil {
-		return true // File already exists
+		return true // fule exists
 	}
 
 	s.logger.Info("Waiting for file to be created", logger.Fields{"file": filePath})
@@ -159,7 +168,7 @@ func (s *scanService) monitorFile(scan *models.Scan, config FileMonitorConfig, c
 	defer watcher.Close()
 
 	if !s.waitForFile(config.FilePath, ctx) {
-		return // File was never created or context was cancelled
+		return
 	}
 
 	if err := watcher.Add(config.FilePath); err != nil {

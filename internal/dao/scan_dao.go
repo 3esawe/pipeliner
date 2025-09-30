@@ -11,6 +11,7 @@ type ScanDAO interface {
 	GetScanByUUID(uuid string) (*models.Scan, error)
 	ListScans() ([]models.Scan, error)
 	UpdateScan(scan *models.Scan) error
+	DeleteScan(uuid string) error
 }
 
 type scanDAO struct {
@@ -43,4 +44,15 @@ func (dao *scanDAO) ListScans() ([]models.Scan, error) {
 		return nil, err
 	}
 	return scans, nil
+}
+
+func (dao *scanDAO) DeleteScan(uuid string) error {
+	result := dao.db.Where("uuid = ?", uuid).Delete(&models.Scan{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }

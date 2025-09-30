@@ -1,4 +1,5 @@
 description: "Simple test configuration to demonstrate PostHooks vs Stage Hooks"
+name: test_scan
 execution_mode: sequential
 tools:
   - name: test-tool-1

@@ -1,4 +1,5 @@
 description: "Complete reconnaissance pipeline including subdomain discovery, HTTP probing, and vulnerability scanning"
+name: full_recon
 execution_mode: hybrid
 tools:
   - name: subfinder

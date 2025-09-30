@@ -16,7 +16,6 @@ type CombineOutput struct {
 	logger *logger.Logger
 }
 
-// NewCombineOutput creates a new CombineOutput hook
 func NewCombineOutput() *CombineOutput {
 	return &CombineOutput{
 		logger: logger.NewLogger(logrus.InfoLevel),
@@ -31,7 +30,6 @@ func (c *CombineOutput) Description() string {
 	return "Combines subdomain enumeration outputs from multiple tools into a single file (httpx_input.txt) for downstream processing"
 }
 
-// ExecuteForStage implements StageHook interface - runs when all domain enumeration tools complete
 func (c *CombineOutput) ExecuteForStage(ctx tools.HookContext) error {
 	outputFile, err := os.Create(filepath.Join(ctx.OutputDir, "httpx_input.txt"))
 	if err != nil {
@@ -80,8 +78,6 @@ func (c *CombineOutput) ExecuteForStage(ctx tools.HookContext) error {
 	return err
 }
 
-// PostHook implements legacy Hook interface for backward compatibility
-// Deprecated: This hook should only be used as a StageHook, not as a PostHook
 func (c *CombineOutput) PostHook(ctx tools.HookContext) error {
 	return c.ExecuteForStage(ctx)
 }

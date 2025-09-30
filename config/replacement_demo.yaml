@@ -1,4 +1,5 @@
 description: "Example configuration demonstrating URL replacement feature"
+name: replacement_demo
 execution_mode: sequential
 tools:
   # Standard subdomain discovery

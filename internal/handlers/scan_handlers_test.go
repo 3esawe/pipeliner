@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"gorm.io/gorm"
 )
 
 // MockScanService is a mock implementation of the ScanService interface
@@ -29,6 +30,14 @@ func (m *MockScanService) StartScan(scan *models.Scan) (string, error) {
 	return args.String(0), args.Error(1) // Return the mocked values
 }
 
+func (m *MockScanService) ListScans() ([]models.Scan, error) {
+	args := m.Called()
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]models.Scan), args.Error(1)
+}
+
 // GetScanByUUID mocks the GetScanByUUID method
 func (m *MockScanService) GetScanByUUID(id string) (*models.Scan, error) {
 	args := m.Called(id)
@@ -36,6 +45,11 @@ func (m *MockScanService) GetScanByUUID(id string) (*models.Scan, error) {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*models.Scan), args.Error(1)
+}
+
+func (m *MockScanService) DeleteScan(id string) error {
+	args := m.Called(id)
+	return args.Error(0)
 }
 
 // TestStartScan tests the StartScan handler function
@@ -239,6 +253,72 @@ func TestGetScanByUUID(t *testing.T) {
 
 			if tt.expectedBody != "" {
 				assert.JSONEq(t, tt.expectedBody, w.Body.String())
+			}
+
+			mockService.AssertExpectations(t)
+		})
+	}
+}
+
+func TestDeleteScan(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name           string
+		scanID         string
+		setupMock      func(*MockScanService)
+		expectedStatus int
+		expectedBody   string
+	}{
+		{
+			name:   "Successful Deletion",
+			scanID: "uuid-123",
+			setupMock: func(m *MockScanService) {
+				m.On("DeleteScan", "uuid-123").Return(nil)
+			},
+			expectedStatus: 204,
+			expectedBody:   "",
+		},
+		{
+			name:   "Scan Not Found",
+			scanID: "missing-id",
+			setupMock: func(m *MockScanService) {
+				m.On("DeleteScan", "missing-id").Return(gorm.ErrRecordNotFound)
+			},
+			expectedStatus: 404,
+			expectedBody:   `{"error":"Scan not found"}`,
+		},
+		{
+			name:   "Service Error",
+			scanID: "uuid-987",
+			setupMock: func(m *MockScanService) {
+				m.On("DeleteScan", "uuid-987").Return(errors.New("db error"))
+			},
+			expectedStatus: 500,
+			expectedBody:   `{"error":"Failed to delete scan"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockService := new(MockScanService)
+			tt.setupMock(mockService)
+
+			handler := NewScanHandler(mockService)
+			router := gin.New()
+			router.DELETE("/api/scans/:id", handler.DeleteScan)
+
+			url := fmt.Sprintf("/api/scans/%s", tt.scanID)
+			req, _ := http.NewRequest("DELETE", url, nil)
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.expectedStatus, w.Code)
+			if tt.expectedBody != "" {
+				assert.JSONEq(t, tt.expectedBody, w.Body.String())
+			} else {
+				assert.Equal(t, "", w.Body.String())
 			}
 
 			mockService.AssertExpectations(t)

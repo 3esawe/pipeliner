@@ -1,4 +1,3 @@
-// pkg/engine/engine.go
 package engine
 
 import (
@@ -35,23 +34,19 @@ type PiplinerEngine struct {
 }
 
 func NewPiplinerEngine(optFuncs ...OptFunc) (*PiplinerEngine, error) {
-	// Initialize default options
 	engineOpts := EnginePiplinerOpts{
 		ctx: context.Background(),
 	}
 
-	// Apply all functional options
 	for _, optFunc := range optFuncs {
 		optFunc(&engineOpts)
 	}
 
-	// If no runner provided, create a default one with replacement support
 	if engineOpts.runner == nil {
 		baseRunner := runner.NewSimpleRunner()
 		engineOpts.runner = runner.NewReplacementCommandRunner(baseRunner)
 	}
 
-	// If no logger provided, create a default one
 	if engineOpts.logger == nil {
 		defaultLogger := logger.NewLogger(logrus.InfoLevel)
 		engineOpts.logger = defaultLogger
@@ -94,7 +89,6 @@ func WithContext(ctx context.Context) OptFunc {
 
 func (e *PiplinerEngine) PrepareScan(options *tools.Options) error {
 	e.options = options
-	// Set logger in options so tools can use structured logging
 	e.options.Logger = e.logger
 
 	if e.options.ScanType != "" {
@@ -215,13 +209,11 @@ func (e *PiplinerEngine) unmarshalConfig(chainConfig *tools.ChainConfig) error {
 func (e *PiplinerEngine) createToolInstances(toolConfigs []tools.ToolConfig) ([]tools.Tool, error) {
 	var toolInstances []tools.Tool
 
-	// Create a tool registry and populate it with all tool configurations
 	registry := tools.NewSimpleToolRegistry()
 	for _, toolConfig := range toolConfigs {
 		registry.RegisterTool(toolConfig)
 	}
 
-	// Create tool instances with registry access
 	for _, toolConfig := range toolConfigs {
 		if toolConfig.Command == "" {
 			e.logger.Error("Tool command not set", logger.Fields{"tool_name": toolConfig.Name})

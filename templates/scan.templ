@@ -1,0 +1,400 @@
+package templates
+
+import (
+	"fmt"
+	"pipeliner/internal/models"
+	"pipeliner/pkg/tools"
+	"time"
+)
+
+templ GetScans(scans []models.Scan) {
+	@Base("Scans") {
+		<div class="container mx-auto p-6">
+			<!-- Page Header -->
+			<div class="mb-8">
+				<div class="flex justify-between items-center">
+					<div>
+						<h1 class="text-3xl font-bold text-gray-900 mb-2">Scans</h1>
+						<p class="text-gray-600">Monitor and manage your security scans</p>
+					</div>
+					<a
+						class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+						href="/scan/new"
+					>
+						<svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+						</svg>
+						New Scan
+					</a>
+				</div>
+			</div>
+			<div id="main-content">
+				if len(scans) == 0 {
+					<div class="text-center py-16">
+						<div class="text-gray-500">
+							<svg class="mx-auto h-16 w-16 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+							</svg>
+							<h3 class="text-xl font-medium text-gray-900 mb-2">No scans found</h3>
+							<p class="text-gray-500">Get started by running your first security scan.</p>
+						</div>
+					</div>
+				} else {
+					<div class="bg-white rounded-lg shadow-md overflow-hidden">
+						<div class="overflow-x-auto">
+							<table class="min-w-full table-auto">
+								<thead class="bg-gray-50">
+									<tr>
+										<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">UUID</th>
+										<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+										<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+										<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Domain</th>
+										<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Domains</th>
+										<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+										<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+									</tr>
+								</thead>
+								<tbody class="bg-white divide-y divide-gray-200">
+									for _, scan := range scans {
+										<tr
+											class="hover:bg-gray-50 transition-colors"
+											id={ fmt.Sprintf("scan-%s", scan.UUID) }
+										>
+											<td class="px-6 py-4 whitespace-nowrap">
+												<span class="text-sm font-mono text-gray-900">
+													if len(scan.UUID) > 8 {
+														{ scan.UUID[:8] }...
+													} else {
+														{ scan.UUID }
+													}
+												</span>
+											</td>
+											<td class="px-6 py-4 whitespace-nowrap">
+												<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+													{ scan.ScanType }
+												</span>
+											</td>
+											<td class="px-6 py-4 whitespace-nowrap">
+												@statusBadge(scan.Status)
+											</td>
+											<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+												{ scan.Domain }
+											</td>
+											<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+												{ fmt.Sprintf("%d", scan.NumberOfDomains) }
+											</td>
+											<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+												{ time.Unix(scan.CreatedAt, 0).Format("2006-01-02 15:04") }
+											</td>
+											<td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+												<button
+													class="text-blue-600 hover:text-blue-900 transition-colors"
+													hx-get={ fmt.Sprintf("/scans/%s", scan.UUID) }
+													hx-target="#main-content"
+												>
+													View
+												</button>
+												if scan.Status == "completed" && scan.ScreenshotsPath != "" {
+													<button
+														class="text-green-600 hover:text-green-900 transition-colors"
+														hx-get={ fmt.Sprintf("/scans/%s/screenshots", scan.UUID) }
+														hx-target="#main-content"
+													>
+														Screenshots
+													</button>
+												}
+												<button
+													class="text-red-600 hover:text-red-900 transition-colors"
+													hx-delete={ fmt.Sprintf("/api/scans/%s", scan.UUID) }
+													hx-target={ fmt.Sprintf("#scan-%s", scan.UUID) }
+													hx-swap="outerHTML"
+													hx-confirm="Are you sure you want to delete this scan?"
+												>
+													Delete
+												</button>
+											</td>
+										</tr>
+									}
+								</tbody>
+							</table>
+						</div>
+					</div>
+				}
+			</div>
+		</div>
+	}
+}
+
+templ statusBadge(status string) {
+	switch status {
+		case "pending":
+			<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
+				Pending
+			</span>
+		case "running":
+			<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+				Running
+			</span>
+		case "completed":
+			<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+				Completed
+			</span>
+		case "failed":
+			<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
+				Failed
+			</span>
+		default:
+			<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
+				{ status }
+			</span>
+	}
+}
+
+templ StartScan(configs []tools.ChainConfig) {
+	@Base("Start New Scan") {
+		<div class="container mx-auto px-6 py-12">
+			<div class="max-w-3xl mx-auto">
+				<div class="mb-8">
+					<h1 class="text-3xl font-bold text-gray-900 mb-2">Launch a New Scan</h1>
+					<p class="text-gray-600">Provide the target domain and choose one of your configured pipelines to kick things off.</p>
+				</div>
+				if len(configs) == 0 {
+					<div class="bg-white border border-dashed border-gray-300 rounded-lg p-8 text-center">
+						<div class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-500">
+							<svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+							</svg>
+						</div>
+						<h2 class="text-xl font-semibold text-gray-900 mb-2">No pipeline configurations available</h2>
+						<p class="text-gray-600 mb-4">Head over to the configurations page to set up your first pipeline before starting a scan.</p>
+						<a href="/config" class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+							View Configurations
+						</a>
+					</div>
+				} else {
+					<div class="bg-white shadow-md rounded-lg p-8">
+						<form
+							id="start-scan-form"
+							class="space-y-8"
+							hx-post="/api/scans"
+							hx-trigger="submit"
+							hx-swap="none"
+							hx-ext="json-enc"
+							hx-encoding="json"
+							hx-on::before-request="prepareStartScanRequest(event)"
+							hx-on::after-request="handleStartScanResponse(event)"
+						>
+							<div>
+								<label for="domain" class="block text-sm font-medium text-gray-700 mb-2">Target domain</label>
+								<input
+									type="text"
+									required
+									name="domain"
+									id="domain"
+									placeholder="example.com"
+									class="w-full rounded-md border border-gray-300 px-4 py-2 text-gray-900 focus:border-blue-500 focus:ring focus:ring-blue-200"
+								/>
+								<p class="mt-2 text-sm text-gray-500">Accepted formats include apex domains or subdomains (e.g., <span class="font-mono">example.com</span>, <span class="font-mono">api.example.com</span>).</p>
+							</div>
+							<div>
+								<h2 class="text-sm font-medium text-gray-700 mb-3">Choose a configuration</h2>
+								<div class="space-y-3">
+									for _, config := range configs {
+										<label class="flex items-start gap-4 rounded-lg border border-gray-200 p-4 hover:border-blue-500 hover:shadow-sm transition">
+											<input
+												type="radio"
+												name="scan_type"
+												value={ config.Name }
+												required
+												class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+											/>
+											<div class="flex-1">
+												<div class="flex items-center justify-between">
+													<p class="text-base font-semibold text-gray-900">{ config.Description }</p>
+													<span class="text-xs font-medium uppercase tracking-wide text-blue-600">{ config.ExecutionMode }</span>
+												</div>
+												<p class="mt-2 text-sm text-gray-600">Pipeline <span class="font-mono">{ config.Name }</span> • { fmt.Sprintf("%d tools", len(config.Tools)) }</p>
+												if len(config.Tools) > 0 {
+													<div class="mt-2 flex flex-wrap gap-2">
+														for j, tool := range config.Tools {
+															if j < 3 {
+																<span class="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">{ tool.Name }</span>
+															}
+														}
+														if len(config.Tools) > 3 {
+															<span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">+{ len(config.Tools) - 3 } more</span>
+														}
+													</div>
+												}
+											</div>
+										</label>
+									}
+								</div>
+							</div>
+							<div class="flex items-center justify-end gap-3">
+								<a href="/scans" class="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50">Cancel</a>
+								<button type="submit" class="inline-flex items-center px-5 py-2 text-sm font-semibold text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+									<svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7h16M4 12h16M4 17h16"></path>
+									</svg>
+									Start Scan
+								</button>
+							</div>
+						</form>
+						<div id="start-scan-response" class="mt-6"></div>
+					</div>
+				}
+			</div>
+		</div>
+		<script>
+			function prepareStartScanRequest(event) {
+				const form = document.getElementById('start-scan-form');
+				if (form) {
+					form.classList.add('opacity-70');
+				}
+				const container = document.getElementById('start-scan-response');
+				if (container) {
+					container.innerHTML = '';
+				}
+			}
+
+			function handleStartScanResponse(event) {
+				const form = document.getElementById('start-scan-form');
+				if (form) {
+					form.classList.remove('opacity-70');
+				}
+				const container = document.getElementById('start-scan-response');
+				if (!container || !event.detail || !event.detail.xhr) {
+					return;
+				}
+				let payload = {};
+				try {
+					payload = JSON.parse(event.detail.xhr.responseText || '{}');
+				} catch (error) {
+					payload = {};
+				}
+				if (event.detail.xhr.status === 200) {
+					container.innerHTML = `<div class="rounded-md border border-green-200 bg-green-50 p-4 text-green-800">
+						<p class="font-semibold">Scan started!</p>
+						<p class="text-sm">Hang tight—we'll redirect you to the scan list.</p>
+					</div>`;
+					if (form) {
+						form.reset();
+					}
+					window.setTimeout(function () {
+						window.location.href = '/scans';
+					}, 1200);
+				} else {
+					const message = payload.error || 'Failed to start scan. Please try again.';
+					container.innerHTML = `<div class="rounded-md border border-red-200 bg-red-50 p-4 text-red-800">
+						<p class="font-semibold">Something went wrong</p>
+						<p class="text-sm">${message}</p>
+					</div>`;
+				}
+			}
+		</script>
+	}
+}
+
+templ ScanDetailPage(scan *models.Scan) {
+	@Base("Scan Details") {
+		<div class="container mx-auto p-6">
+			<div class="mb-8 flex items-center justify-between">
+				<div>
+					<h1 class="text-3xl font-bold text-gray-900 mb-2">Scan Details</h1>
+					<p class="text-gray-600">Detailed information for scan <span class="font-mono">{ scan.UUID }</span></p>
+				</div>
+				<a
+					href="/scans"
+					class="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
+				>
+					Back to Scans
+				</a>
+			</div>
+			<div id="main-content">
+				@ScanDetailContent(scan)
+			</div>
+		</div>
+	}
+}
+
+templ ScanDetailContent(scan *models.Scan) {
+	if scan == nil {
+		<div class="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-gray-600">
+			<p>Scan details are unavailable.</p>
+		</div>
+		return
+	}
+	<div class="bg-white rounded-lg shadow-md p-6">
+		<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+			<div class="lg:col-span-2 space-y-6">
+				<div>
+					<h2 class="text-lg font-semibold text-gray-900 mb-2">Overview</h2>
+					<div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
+						<div>
+							<p class="text-gray-500">Domain</p>
+							<p class="font-medium">{ scan.Domain }</p>
+						</div>
+						<div>
+							<p class="text-gray-500">Scan Type</p>
+							<p class="font-medium capitalize">{ scan.ScanType }</p>
+						</div>
+						<div>
+							<p class="text-gray-500">Status</p>
+							@statusBadge(scan.Status)
+						</div>
+						<div>
+							<p class="text-gray-500">Created</p>
+							if scan.CreatedAt > 0 {
+								<p class="font-medium">{ time.Unix(scan.CreatedAt, 0).Format("Jan 02, 2006 15:04 MST") }</p>
+							} else {
+								<p class="font-medium text-gray-400">--</p>
+							}
+						</div>
+						<div>
+							<p class="text-gray-500">Updated</p>
+							if scan.UpdatedAt > 0 {
+								<p class="font-medium">{ time.Unix(scan.UpdatedAt, 0).Format("Jan 02, 2006 15:04 MST") }</p>
+							} else {
+								<p class="font-medium text-gray-400">--</p>
+							}
+						</div>
+						<div>
+							<p class="text-gray-500">Discovered Domains</p>
+							<p class="font-medium">{ fmt.Sprintf("%d", scan.NumberOfDomains) }</p>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="space-y-4">
+				<div class="rounded-lg border border-gray-200 p-4">
+					<h3 class="text-sm font-semibold text-gray-900 mb-2">Actions</h3>
+					<div class="space-y-2">
+						<a
+							href="/scan/new"
+							class="w-full inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50"
+						>
+							Start Another Scan
+						</a>
+						<button
+							class="w-full inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-red-600 border border-red-200 rounded-md hover:bg-red-50"
+							hx-delete={ fmt.Sprintf("/api/scans/%s", scan.UUID) }
+							hx-confirm="Delete this scan?"
+							hx-target="closest .bg-white"
+							hx-swap="outerHTML"
+						>
+							Delete Scan
+						</button>
+					</div>
+				</div>
+				if scan.ScreenshotsPath != "" {
+					<div class="rounded-lg border border-gray-200 p-4">
+						<h3 class="text-sm font-semibold text-gray-900 mb-2">Artifacts</h3>
+						<p class="text-sm text-gray-600">Screenshots stored at:</p>
+						<p class="mt-1 font-mono text-xs bg-gray-50 px-3 py-2 rounded-md">{ scan.ScreenshotsPath }</p>
+					</div>
+				}
+			</div>
+		</div>
+	</div>
+}

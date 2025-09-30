@@ -1,4 +1,5 @@
 description: "Test configuration with PostHooks demonstration"
+name: test_posthooks
 execution_mode: sequential
 tools:
   - name: subfinder

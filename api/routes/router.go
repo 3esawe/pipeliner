@@ -2,7 +2,7 @@ package routes
 
 import (
 	"pipeliner/internal/dao"
-	"pipeliner/internal/handlers"
+	"pipeliner/internal/handlers/web"
 	"pipeliner/internal/services"
 
 	"github.com/gin-gonic/gin"
@@ -13,10 +13,12 @@ func InitRouter(db *gorm.DB) *gin.Engine {
 	router := gin.Default()
 	router.Static("/static", "./static")
 
+	indexWebHandlers := web.NewIndexHandler()
 	scanDao := dao.NewScanDAO(db)
 	scanService := services.NewScanService(scanDao)
-	scanWebHandlers := handlers.NewScanHandler(scanService)
-	configWebHandlers := handlers.NewConfigHandler(services.NewConfigService())
+	configService := services.NewConfigService()
+	configWebHandlers := web.NewConfigWebHandler(configService)
+	scanWebHandler := web.NewScanWebHandler(scanService, configService)
 
 	// REST APIs
 	api := router.Group("/api")
@@ -28,8 +30,11 @@ func InitRouter(db *gorm.DB) *gin.Engine {
 	// web pages
 	web := router.Group("/")
 	{
-		web.GET("/", scanWebHandlers.HomePage)
+		web.GET("/", indexWebHandlers.HomePage)
 		web.GET("/config", configWebHandlers.ConfigPage)
+		web.GET("/scan/new", scanWebHandler.StartScanPage)
+		web.GET("/scans", scanWebHandler.ScansPage)
+		web.GET("/scans/:id", scanWebHandler.ScanDetailPage)
 	}
 
 	return router
