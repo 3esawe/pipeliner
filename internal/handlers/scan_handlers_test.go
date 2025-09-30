@@ -16,18 +16,13 @@ import (
 	"gorm.io/gorm"
 )
 
-// MockScanService is a mock implementation of the ScanService interface
-// This allows us to control the behavior of dependencies during testing
 type MockScanService struct {
-	mock.Mock // Embed testify/mock to get mocking capabilities
+	mock.Mock
 }
 
-// StartScan mocks the StartScan method
-// The mock.Called() records the method call and arguments
-// The Return() specifies what values to return
 func (m *MockScanService) StartScan(scan *models.Scan) (string, error) {
-	args := m.Called(scan)               // Record that this method was called with these args
-	return args.String(0), args.Error(1) // Return the mocked values
+	args := m.Called(scan)
+	return args.String(0), args.Error(1)
 }
 
 func (m *MockScanService) ListScans() ([]models.Scan, error) {
@@ -38,7 +33,6 @@ func (m *MockScanService) ListScans() ([]models.Scan, error) {
 	return args.Get(0).([]models.Scan), args.Error(1)
 }
 
-// GetScanByUUID mocks the GetScanByUUID method
 func (m *MockScanService) GetScanByUUID(id string) (*models.Scan, error) {
 	args := m.Called(id)
 	if args.Get(0) == nil {
@@ -52,28 +46,22 @@ func (m *MockScanService) DeleteScan(id string) error {
 	return args.Error(0)
 }
 
-// TestStartScan tests the StartScan handler function
 func TestStartScan(t *testing.T) {
-	// Set Gin to test mode to reduce noise in test output
 	gin.SetMode(gin.TestMode)
 
-	// Define test cases using table-driven testing pattern
-	// This allows us to test multiple scenarios with the same test logic
 	tests := []struct {
-		name           string                             // Test case name for clarity
-		requestBody    string                             // JSON payload to send
-		setupMock      func(*MockScanService)             // Function to configure mock behavior
-		expectedStatus int                                // Expected HTTP status code
-		expectedBody   string                             // Expected response body
-		validateMock   func(*testing.T, *MockScanService) // Optional: additional mock validations
+		name           string
+		requestBody    string
+		setupMock      func(*MockScanService)
+		expectedStatus int
+		expectedBody   string
+		validateMock   func(*testing.T, *MockScanService)
 	}{
 		{
 			name:        "Valid Request - Success",
 			requestBody: `{"scan_type":"subdomain_alive","domain":"example.com"}`,
 			setupMock: func(m *MockScanService) {
-				// Configure mock to return success when StartScan is called
 				m.On("StartScan", mock.MatchedBy(func(scan *models.Scan) bool {
-					// Verify the scan object has expected values
 					return scan.ScanType == "subdomain_alive" &&
 						scan.Domain == "example.com"
 				})).Return("123e4567-e89b-12d3-a456-426614174000", nil)
@@ -81,38 +69,30 @@ func TestStartScan(t *testing.T) {
 			expectedStatus: 200,
 			expectedBody:   `{"scan_id":"123e4567-e89b-12d3-a456-426614174000"}`,
 			validateMock: func(t *testing.T, m *MockScanService) {
-				// Verify StartScan was called exactly once
 				m.AssertNumberOfCalls(t, "StartScan", 1)
 			},
 		},
 		{
-			name:        "Invalid JSON - Malformed",
-			requestBody: `{"scan_type":"subdomain_alive","domain":}`, // Missing value
-			setupMock: func(m *MockScanService) {
-				// No mock setup needed - handler should fail before calling service
-			},
+			name:           "Invalid JSON - Malformed",
+			requestBody:    `{"scan_type":"subdomain_alive","domain":}`,
+			setupMock:      func(m *MockScanService) {},
 			expectedStatus: 400,
 			expectedBody:   `{"error":"Invalid request payload"}`,
 			validateMock: func(t *testing.T, m *MockScanService) {
-				// Verify StartScan was never called due to JSON parsing failure
 				m.AssertNumberOfCalls(t, "StartScan", 0)
 			},
 		},
 		{
-			name:        "Missing Required Field - scan_type",
-			requestBody: `{"domain":"example.com"}`, // Missing scan_type
-			setupMock: func(m *MockScanService) {
-				// No mock setup needed
-			},
+			name:           "Missing Required Field - scan_type",
+			requestBody:    `{"domain":"example.com"}`,
+			setupMock:      func(m *MockScanService) {},
 			expectedStatus: 400,
 			expectedBody:   `{"error":"Invalid request payload"}`,
 		},
 		{
-			name:        "Missing Required Field - domain",
-			requestBody: `{"scan_type":"subdomain_alive"}`, // Missing domain
-			setupMock: func(m *MockScanService) {
-				// No mock setup needed
-			},
+			name:           "Missing Required Field - domain",
+			requestBody:    `{"scan_type":"subdomain_alive"}`,
+			setupMock:      func(m *MockScanService) {},
 			expectedStatus: 400,
 			expectedBody:   `{"error":"Invalid request payload"}`,
 		},
@@ -120,7 +100,6 @@ func TestStartScan(t *testing.T) {
 			name:        "Service Error - Internal Error",
 			requestBody: `{"scan_type":"subdomain_alive","domain":"example.com"}`,
 			setupMock: func(m *MockScanService) {
-				// Configure mock to return an error
 				m.On("StartScan", mock.AnythingOfType("*models.Scan")).
 					Return("", errors.New("database connection failed"))
 			},
@@ -128,64 +107,49 @@ func TestStartScan(t *testing.T) {
 			expectedBody:   `{"error":"Failed to start scan"}`,
 		},
 		{
-			name:        "Empty Request Body",
-			requestBody: `{}`,
-			setupMock: func(m *MockScanService) {
-				// No mock setup needed
-			},
+			name:           "Empty Request Body",
+			requestBody:    `{}`,
+			setupMock:      func(m *MockScanService) {},
 			expectedStatus: 400,
 			expectedBody:   `{"error":"Invalid request payload"}`,
 		},
 	}
 
-	// Run each test case
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a new mock for each test to avoid interference
 			mockService := new(MockScanService)
 
-			// Setup mock behavior for this specific test
 			tt.setupMock(mockService)
 
-			// Create handler with mock service
 			handler := NewScanHandler(mockService)
 
-			// Setup Gin router for this test
 			router := gin.New() // Use gin.New() instead of Default() to avoid middleware
 			router.POST("/api/scans", handler.StartScan)
 
-			// Create HTTP request
 			req, err := http.NewRequest("POST", "/api/scans", strings.NewReader(tt.requestBody))
 			assert.NoError(t, err, "Failed to create request")
 			req.Header.Set("Content-Type", "application/json")
 
-			// Create response recorder to capture handler response
 			w := httptest.NewRecorder()
 
-			// Execute the request
 			router.ServeHTTP(w, req)
 
-			// Assert HTTP status code
 			assert.Equal(t, tt.expectedStatus, w.Code,
 				"Expected status %d, got %d. Response: %s",
 				tt.expectedStatus, w.Code, w.Body.String())
 
-			// Assert response body
 			assert.JSONEq(t, tt.expectedBody, w.Body.String(),
 				"Response body doesn't match expected JSON")
 
-			// Run additional mock validations if provided
 			if tt.validateMock != nil {
 				tt.validateMock(t, mockService)
 			}
 
-			// Verify all expected mock calls were made
 			mockService.AssertExpectations(t)
 		})
 	}
 }
 
-// TestGetScanByUUID tests the GetScanByUUID handler function
 func TestGetScanByUUID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
