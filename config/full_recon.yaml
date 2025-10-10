@@ -60,6 +60,30 @@ tools:
       - flag: "-t"
         default: "20"
   
+  - name: nmap
+    description: Nmap for port scanning live subdomains
+    command: nmap
+    type: recon
+    depends_on: ["subfinder", "findomain", "chaos-client"]
+    flags:
+      - flag: "-iL"
+        option: "Input"
+        default: "httpx_input.txt"
+      - flag: "-oN"
+        option: "Output"
+        default: "nmap_output.txt"
+      - flag: "-sS"
+        description: "TCP SYN scan"
+        is_flag: true
+      - flag: "-Pn"
+        description: "Skip host discovery"
+        is_flag: true
+      - flag: "-T4"
+        description: "Aggressive timing"
+        is_flag: true
+      - flag: "--top-ports"
+        option: "Ports"
+        default: "1000"
   - name: ffuf
     description: Fuzzing tool for discovering hidden resources
     command: ffuf

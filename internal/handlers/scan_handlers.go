@@ -45,6 +45,11 @@ func (h *ScanHandler) GetScanByUUID(c *gin.Context) {
 	scanID := c.Param("id")
 	scan, err := h.scanService.GetScanByUUID(scanID)
 	if err != nil {
+		if errors.Is(err, services.ErrScanNotFound) {
+			h.logger.Warn("Scan not found", logger.Fields{"scan_id": scanID})
+			c.JSON(404, gin.H{"error": "Scan not found"})
+			return
+		}
 		h.logger.Error("Failed to get scan:", logger.Fields{"error": err})
 		c.JSON(500, gin.H{"error": "Failed to get scan"})
 		return

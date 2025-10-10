@@ -12,6 +12,7 @@ import (
 func InitRouter(db *gorm.DB) *gin.Engine {
 	router := gin.Default()
 	router.Static("/static", "./static")
+	router.Static("/scan-files", "./scans")
 
 	indexWebHandlers := web.NewIndexHandler()
 	scanDao := dao.NewScanDAO(db)
@@ -33,8 +34,9 @@ func InitRouter(db *gorm.DB) *gin.Engine {
 		web.GET("/", indexWebHandlers.HomePage)
 		web.GET("/config", configWebHandlers.ConfigPage)
 		web.GET("/scan/new", scanWebHandler.StartScanPage)
-		web.GET("/scans", scanWebHandler.ScansPage)
+		web.GET("/scans/:id/images", scanWebHandler.ScreenShotsPage)
 		web.GET("/scans/:id", scanWebHandler.ScanDetailPage)
+		web.GET("/scans", scanWebHandler.ScansPage)
 	}
 
 	return router

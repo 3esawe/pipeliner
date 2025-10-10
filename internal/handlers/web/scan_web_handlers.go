@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/json"
 	"net/http"
 	"pipeliner/internal/services"
 	"pipeliner/pkg/logger"
@@ -89,6 +90,49 @@ func (h *ScanWebHandler) ScanDetailPage(c *gin.Context) {
 			c.Status(http.StatusInternalServerError)
 			return
 		}
+	}
+
+	c.Status(http.StatusOK)
+}
+
+func (h *ScanWebHandler) ScreenShotsPage(c *gin.Context) {
+	scanID := c.Param("id")
+	if scanID == "" {
+		h.logger.Warn("Screenshot page requested without scan ID", logger.Fields{})
+		c.Status(http.StatusBadRequest)
+		return
+	}
+
+	scan, err := h.scanService.GetScanByUUID(scanID)
+	if err != nil {
+		h.logger.Error("Failed to load scan for screenshots", logger.Fields{"error": err, "scan_id": scanID})
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+
+	if scan == nil {
+		h.logger.Warn("Scan not found for screenshots", logger.Fields{"scan_id": scanID})
+		c.Status(http.StatusNotFound)
+		return
+	}
+
+	if scan.ScreenshotsPath == "" || scan.ScreenshotsPath == "[]" {
+		h.logger.Warn("No screenshots available for scan", logger.Fields{"scan_id": scanID})
+		c.Status(http.StatusNotFound)
+		return
+	}
+
+	var paths []string
+	if err := json.Unmarshal([]byte(scan.ScreenshotsPath), &paths); err != nil {
+		h.logger.Error("Failed to decode screenshot paths", logger.Fields{"error": err, "scan_id": scanID})
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+
+	if err := templates.ScanScreenshotsPage(scan, paths).Render(c, c.Writer); err != nil {
+		h.logger.Error("Failed to render screenshots page", logger.Fields{"error": err, "scan_id": scanID})
+		c.Status(http.StatusInternalServerError)
+		return
 	}
 
 	c.Status(http.StatusOK)

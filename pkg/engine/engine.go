@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"os"
 	"pipeliner/internal/notification"
 	"pipeliner/internal/utils"
 	"pipeliner/pkg/errors"
@@ -88,6 +89,9 @@ func WithContext(ctx context.Context) OptFunc {
 }
 
 func (e *PiplinerEngine) PrepareScan(options *tools.Options) error {
+	if options == nil {
+		return fmt.Errorf("options cannot be nil")
+	}
 	e.options = options
 	e.options.Logger = e.logger
 
@@ -104,11 +108,12 @@ func (e *PiplinerEngine) PrepareScan(options *tools.Options) error {
 			return errors.ErrInvalidConfig
 		}
 
-		_, err = utils.CreateAndChangeScanDirectory(e.options.ScanType, e.options.Domain)
+		dir, err := utils.CreateAndChangeScanDirectory(e.options.ScanType, e.options.Domain)
 		if err != nil {
 			e.logger.Error("Failed to create scan directory", logger.Fields{"error": err})
 			return fmt.Errorf("failed to create scan directory: %w", err)
 		}
+		e.scanDir = dir
 
 		go output.WatchDirectory(e.ctx)
 	}
@@ -116,11 +121,18 @@ func (e *PiplinerEngine) PrepareScan(options *tools.Options) error {
 }
 
 func (e *PiplinerEngine) RunHTTP(scanType, domain string) (err error) {
-	if dir, err := utils.CreateAndChangeScanDirectory(scanType, domain); err != nil {
-		e.logger.Error("Failed to create scan directory:", logger.Fields{"error": err})
-		return fmt.Errorf("failed to create scan directory: %w", err)
-	} else {
+	if e.scanDir == "" {
+		dir, err := utils.CreateAndChangeScanDirectory(scanType, domain)
+		if err != nil {
+			e.logger.Error("Failed to create scan directory:", logger.Fields{"error": err})
+			return fmt.Errorf("failed to create scan directory: %w", err)
+		}
 		e.scanDir = dir
+	} else {
+		if err := os.Chdir(e.scanDir); err != nil {
+			e.logger.Error("Failed to switch to existing scan directory", logger.Fields{"error": err, "scan_dir": e.scanDir})
+			return fmt.Errorf("failed to change to scan directory: %w", err)
+		}
 	}
 
 	e.logger.Info("Starting HTTP scan for", logger.Fields{"domain": domain, "module": scanType})
@@ -232,4 +244,8 @@ func (e *PiplinerEngine) createToolInstances(toolConfigs []tools.ToolConfig) ([]
 
 func (e *PiplinerEngine) GetOptions() *tools.Options {
 	return e.options
+}
+
+func (e *PiplinerEngine) ScanDirectory() string {
+	return e.scanDir
 }

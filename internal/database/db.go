@@ -10,22 +10,23 @@ import (
 	"gorm.io/gorm"
 )
 
-var DB *gorm.DB
-
-func InitDB(cfg *config.Config) {
+func InitDB(cfg *config.Config) (*gorm.DB, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("database config is nil")
+	}
 
 	dns := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
 		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPassword, cfg.DBName)
 
-	var err error
-	DB, err = gorm.Open(postgres.Open(dns), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(dns), &gorm.Config{})
 	if err != nil {
-		logrus.Fatalf("Failed to connect to database: %v", err)
+		return nil, fmt.Errorf("connect to database: %w", err)
 	}
 
-	if err := DB.AutoMigrate(&models.Scan{}); err != nil {
-		logrus.Fatalf("Failed to auto-migrate database: %v", err)
+	if err := db.AutoMigrate(&models.Scan{}); err != nil {
+		return nil, fmt.Errorf("auto-migrate database: %w", err)
 	}
 
 	logrus.Info("Database connection established and migrated")
+	return db, nil
 }

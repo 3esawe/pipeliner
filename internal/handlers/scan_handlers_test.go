@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"pipeliner/internal/models"
+	"pipeliner/internal/services"
 	"strings"
 	"testing"
 
@@ -181,10 +182,10 @@ func TestGetScanByUUID(t *testing.T) {
 			scanID: "non-existent-id",
 			setupMock: func(m *MockScanService) {
 				m.On("GetScanByUUID", "non-existent-id").
-					Return(nil, errors.New("record not found"))
+					Return(nil, services.ErrScanNotFound)
 			},
-			expectedStatus: 500,
-			expectedBody:   `{"error":"Failed to get scan"}`,
+			expectedStatus: 404,
+			expectedBody:   `{"error":"Scan not found"}`,
 		},
 		{
 			name:   "Service Returns Nil Scan",

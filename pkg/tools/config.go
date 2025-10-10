@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"pipeliner/pkg/logger"
 	"reflect"
+	"strings"
 	"time"
 )
 
@@ -164,6 +165,10 @@ func (tc *ToolConfig) BuildArgs(options interface{}) ([]string, error) {
 	for _, flag := range tc.Flags {
 		// Handle positional arguments
 		if flag.IsPositional {
+			// Validate positional argument
+			if err := validateArgument(flag.Flag); err != nil {
+				return nil, fmt.Errorf("invalid positional argument %s: %w", flag.Flag, err)
+			}
 			args = append(args, flag.Flag)
 			continue
 		}
@@ -171,7 +176,16 @@ func (tc *ToolConfig) BuildArgs(options interface{}) ([]string, error) {
 		// Skip flags with empty option names (pure flags)
 		if flag.Option == "" {
 			if flag.Flag != "" {
+				// Validate the flag itself
+				if err := validateFlag(flag.Flag); err != nil {
+					return nil, fmt.Errorf("invalid flag %s: %w", flag.Flag, err)
+				}
+
 				if flag.Default != "" {
+					// Validate default value
+					if err := validateArgument(flag.Default); err != nil {
+						return nil, fmt.Errorf("invalid default value for %s: %w", flag.Flag, err)
+					}
 					args = append(args, flag.Flag, flag.Default)
 				} else if flag.IsBoolean {
 					args = append(args, flag.Flag)
@@ -183,6 +197,13 @@ func (tc *ToolConfig) BuildArgs(options interface{}) ([]string, error) {
 		fieldValue := optionsValue.FieldByName(flag.Option)
 		if !fieldValue.IsValid() {
 			if flag.Default != "" {
+				// Validate flag and default
+				if err := validateFlag(flag.Flag); err != nil {
+					return nil, fmt.Errorf("invalid flag %s: %w", flag.Flag, err)
+				}
+				if err := validateArgument(flag.Default); err != nil {
+					return nil, fmt.Errorf("invalid default value for %s: %w", flag.Flag, err)
+				}
 				args = append(args, flag.Flag, flag.Default)
 				continue
 			} else if flag.Required {
@@ -195,6 +216,10 @@ func (tc *ToolConfig) BuildArgs(options interface{}) ([]string, error) {
 
 		if flag.IsBoolean {
 			if value == "true" {
+				// Validate flag
+				if err := validateFlag(flag.Flag); err != nil {
+					return nil, fmt.Errorf("invalid boolean flag %s: %w", flag.Flag, err)
+				}
 				args = append(args, flag.Flag)
 			}
 			continue
@@ -209,8 +234,67 @@ func (tc *ToolConfig) BuildArgs(options interface{}) ([]string, error) {
 		}
 
 		if value != "" {
+			// Validate both flag and value
+			if err := validateFlag(flag.Flag); err != nil {
+				return nil, fmt.Errorf("invalid flag %s: %w", flag.Flag, err)
+			}
+			if err := validateArgument(value); err != nil {
+				return nil, fmt.Errorf("invalid value for %s: %w", flag.Flag, err)
+			}
 			args = append(args, flag.Flag, value)
 		}
 	}
 	return args, nil
+}
+
+// validateFlag validates that a flag name is safe
+func validateFlag(flag string) error {
+	if flag == "" {
+		return fmt.Errorf("flag is empty")
+	}
+
+	// Flags should start with - or --
+	if !strings.HasPrefix(flag, "-") {
+		return fmt.Errorf("flag must start with - or --")
+	}
+
+	// Check for shell metacharacters
+	dangerous := []string{";", "&", "|", "`", "$", "(", ")", "\n", "\r", "\\", "<", ">", " "}
+	for _, char := range dangerous {
+		if strings.Contains(flag, char) {
+			return fmt.Errorf("flag contains dangerous character: %s", char)
+		}
+	}
+
+	return nil
+}
+
+// validateArgument validates that a command argument value is safe
+func validateArgument(arg string) error {
+	if arg == "" {
+		return nil // Empty arguments are allowed
+	}
+
+	// Check for shell metacharacters that could enable command injection
+	dangerous := []string{";", "&", "|", "`", "$", "(", ")", "\n", "\r", "\\"}
+	for _, char := range dangerous {
+		if strings.Contains(arg, char) {
+			return fmt.Errorf("argument contains dangerous character: %s", char)
+		}
+	}
+
+	// Check for command substitution patterns
+	if strings.Contains(arg, "$(") || strings.Contains(arg, "${") {
+		return fmt.Errorf("command substitution detected in argument")
+	}
+
+	// Check for path traversal in non-URL arguments
+	if strings.Contains(arg, "..") {
+		// Allow .. in URLs but not in file paths
+		if !strings.Contains(arg, "://") {
+			return fmt.Errorf("path traversal detected in argument")
+		}
+	}
+
+	return nil
 }

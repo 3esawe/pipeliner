@@ -17,6 +17,12 @@ func TestSimpleRunner_Run(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SimpleRunner.Run failed: %v", err)
 	}
+
+	// Verify Windows-style paths are accepted as arguments
+	err = simpleRunner.Run(ctx, "echo", []string{"C:\\temp\\wordlist.txt"})
+	if err != nil {
+		t.Fatalf("SimpleRunner.Run rejected Windows path argument: %v", err)
+	}
 }
 
 func TestSimpleRunner_InterpreterResolution(t *testing.T) {

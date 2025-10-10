@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"os"
 	"pipeliner/api/routes"
 	"pipeliner/internal/config"
 	"pipeliner/internal/database"
@@ -24,8 +25,12 @@ func NewServerCommand() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			cmd.SilenceUsage = true
 			cfg := config.LoadConfig()
-			database.InitDB(cfg)
-			router := routes.InitRouter(database.DB)
+			db, err := database.InitDB(cfg)
+			if err != nil {
+				cmd.PrintErrf("failed to initialize database: %v\n", err)
+				os.Exit(1)
+			}
+			router := routes.InitRouter(db)
 			router.Run(fmt.Sprintf(":%d", ServerConfig.Port))
 		},
 	}
