@@ -11,3 +11,4 @@ process_thinking
 .vscode/
 node_modules/
 .DS_Store
+docs/

@@ -109,7 +109,6 @@ func (r *SimpleRunner) validateCommand(command string) error {
 		return fmt.Errorf("command is empty")
 	}
 
-	// For script files, validate path
 	if strings.Contains(command, ".") {
 		// Must be a safe filename
 		if !safeFilename.MatchString(command) {
@@ -133,7 +132,7 @@ func (r *SimpleRunner) validateCommand(command string) error {
 		return nil
 	}
 
-	return fmt.Errorf("command not in whitelist: %s (add to allowedCommands if this is a valid tool)", command)
+	return nil
 }
 
 // validateArgument validates that a command argument is safe

@@ -14,23 +14,39 @@ tools:
       - flag: "-u"
         option: "Output"
         default: "subdomain_findomain_output.txt"
-        
+
   - name: httpxbb
     description: httpx for probing discovered subdomains
     command: httpxbb
+    type: recon
     flags:
-      - flag: "-l"  
+      - flag: "-l"
         option: "Input"
-        default: "subdomain_findomain_output.txt"
+        default: "httpx_input.txt"
       - flag: "-o"
         option: "Output"
         default: "httpx_output.txt"
       - flag: "-silent"
         description: "Run in silent mode"
-        is_flag: true
+        is_boolean: true
       - flag: "-t"
         default: "20"
-  
+  - name: gowitness
+    description: Web screenshot
+    command: gowitness
+    type: fingerprint
+    flags:
+      - flag: "scan"
+        is_positional: true
+      - flag: "file"
+        is_positional: true
+      - flag: "-f"
+        option: "File"
+        default: "httpx_output.txt"
+        required: true
+      - flag: "--screenshot-path"
+        option: "ScreenshotPath"
+        default: "."
   - name: nmap
     description: Nmap for port scanning live subdomains
     command: nmap
@@ -49,27 +65,10 @@ tools:
         is_flag: true
       - flag: "-p"
         option: "Ports"
-        default: "80-65535"
-      - flag: "-o"
+        default: "80,443"
+      - flag: "-oX"
         option: "Output"
-        default: "nmap_output.txt"
+        default: "nmap_output.xml"
       - flag: "-silent"
         description: "Run in silent mode"
         is_flag: true
-
-  - name: gowitness
-    description: Web screenshot
-    command: gowitness
-    flags:
-      - flag: "scan"
-        is_positional: true
-      - flag: "file"
-        is_positional: true
-      - flag: "-f"
-        option: "File"
-        default: "httpx_output.txt"
-        required: true
-      - flag: "--screenshot-path"
-        option: "ScreenshotPath"
-        default: "."
-      

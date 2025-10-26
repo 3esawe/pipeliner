@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"os"
+	"path/filepath"
 	"pipeliner/internal/dao"
 	"pipeliner/internal/handlers/web"
 	"pipeliner/internal/services"
@@ -11,8 +13,17 @@ import (
 
 func InitRouter(db *gorm.DB) *gin.Engine {
 	router := gin.Default()
-	router.Static("/static", "./static")
-	router.Static("/scan-files", "./scans")
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		panic("failed to get current working directory: " + err.Error())
+	}
+
+	staticDir := filepath.Join(cwd, "static")
+	scansDir := filepath.Join(cwd, "scans")
+
+	router.Static("/static", staticDir)
+	router.Static("/scan-files", scansDir)
 
 	indexWebHandlers := web.NewIndexHandler()
 	scanDao := dao.NewScanDAO(db)
@@ -35,6 +46,7 @@ func InitRouter(db *gorm.DB) *gin.Engine {
 		web.GET("/config", configWebHandlers.ConfigPage)
 		web.GET("/scan/new", scanWebHandler.StartScanPage)
 		web.GET("/scans/:id/images", scanWebHandler.ScreenShotsPage)
+		web.GET("/scans/:id/subdomains", scanWebHandler.SubdomainsPage)
 		web.GET("/scans/:id", scanWebHandler.ScanDetailPage)
 		web.GET("/scans", scanWebHandler.ScansPage)
 	}

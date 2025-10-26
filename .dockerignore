@@ -1,0 +1,68 @@
+# .dockerignore
+# Ignore unnecessary files to speed up Docker builds
+
+# Git
+.git
+.gitignore
+.github
+
+# Documentation
+*.md
+docs/
+LICENSE
+
+# Development files
+.env
+.env.local
+*.log
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Build artifacts
+bin/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test files
+*_test.go
+testdata/
+coverage.txt
+coverage.html
+
+# Dependencies (will be downloaded during build)
+vendor/
+
+# Scan results (will be created at runtime)
+scans/
+*.db
+*.db-shm
+*.db-wal
+
+# Temporary files
+tmp/
+temp/
+.cache/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker files
+docker-compose.yml
+docker-compose.*.yml
+Dockerfile
+.dockerignore
+
+# CI/CD
+.gitlab-ci.yml
+.travis.yml
+Jenkinsfile

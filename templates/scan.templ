@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"pipeliner/internal/models"
 	"pipeliner/pkg/tools"
+	"strings"
 	"time"
 )
 
@@ -99,7 +100,7 @@ templ GetScans(scans []models.Scan) {
 														href={ templ.URL(fmt.Sprintf("/scans/%s/images", scan.UUID)) }
 														class="text-green-600 hover:text-green-900 transition-colors"
 													>
-														Screenshots
+														Artifacts
 													</a>
 												}
 												<button
@@ -377,7 +378,18 @@ templ ScanDetailContent(scan *models.Scan) {
 								<svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
 								</svg>
-								View Screenshots
+								View Artifacts
+							</a>
+						}
+						if len(scan.Subdomains) > 0 {
+							<a
+								href={ templ.URL(fmt.Sprintf("/scans/%s/subdomains", scan.UUID)) }
+								class="w-full inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-purple-600 border border-purple-200 rounded-md hover:bg-purple-50"
+							>
+								<svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+								</svg>
+								View Subdomains
 							</a>
 						}
 						<a
@@ -400,13 +412,41 @@ templ ScanDetailContent(scan *models.Scan) {
 				if scan.ScreenshotsPath != "" && scan.ScreenshotsPath != "[]" {
 					<div class="rounded-lg border border-gray-200 p-4">
 						<h3 class="text-sm font-semibold text-gray-900 mb-2">Artifacts</h3>
-						<p class="text-sm text-gray-600 mb-2">Screenshots available</p>
-						<a
-							href={ templ.URL(fmt.Sprintf("/scan/%s/images", scan.UUID)) }
-							class="text-sm text-blue-600 hover:text-blue-800 underline"
-						>
-							View gallery →
-						</a>
+						<div class="space-y-2">
+							<div>
+								<p class="text-sm text-gray-600 mb-1">Screenshots available</p>
+								<a
+									href={ templ.URL(fmt.Sprintf("/scans/%s/images", scan.UUID)) }
+									class="text-sm text-blue-600 hover:text-blue-800 underline"
+								>
+									View gallery →
+								</a>
+							</div>
+							if len(scan.Subdomains) > 0 {
+								<div class="pt-2 border-t border-gray-200">
+									<p class="text-sm text-gray-600 mb-1">Subdomains discovered</p>
+									<a
+										href={ templ.URL(fmt.Sprintf("/scans/%s/subdomains", scan.UUID)) }
+										class="text-sm text-blue-600 hover:text-blue-800 underline"
+									>
+										View { fmt.Sprintf("%d subdomains", len(scan.Subdomains)) } →
+									</a>
+								</div>
+							}
+						</div>
+					</div>
+				} else if len(scan.Subdomains) > 0 {
+					<div class="rounded-lg border border-gray-200 p-4">
+						<h3 class="text-sm font-semibold text-gray-900 mb-2">Artifacts</h3>
+						<div>
+							<p class="text-sm text-gray-600 mb-1">Subdomains discovered</p>
+							<a
+								href={ templ.URL(fmt.Sprintf("/scans/%s/subdomains", scan.UUID)) }
+								class="text-sm text-blue-600 hover:text-blue-800 underline"
+							>
+								View { fmt.Sprintf("%d subdomains", len(scan.Subdomains)) } →
+							</a>
+						</div>
 					</div>
 				}
 			</div>
@@ -487,4 +527,255 @@ templ ScanScreenshotsPage(scan *models.Scan, screenshotPaths []string) {
 			});
 		</script>
 	}
+}
+
+templ ScanSubdomainsPage(scan *models.Scan) {
+	@Base("Subdomains") {
+		<div class="container mx-auto p-6">
+			<div class="mb-8">
+				<div class="flex items-center justify-between">
+					<div>
+						<h1 class="text-3xl font-bold text-gray-900 mb-2">Discovered Subdomains</h1>
+						<p class="text-gray-600">
+							Scan <span class="font-mono">{ scan.UUID[:8] }...</span> • { scan.Domain } • 
+							<span class="font-semibold">{ fmt.Sprintf("%d subdomains", len(scan.Subdomains)) }</span>
+						</p>
+					</div>
+					<div class="flex gap-3">
+						<a
+							href={ templ.URL(fmt.Sprintf("/scans/%s", scan.UUID)) }
+							class="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
+						>
+							Back to Scan Details
+						</a>
+						<a
+							href="/scans"
+							class="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
+						>
+							All Scans
+						</a>
+					</div>
+				</div>
+			</div>
+			if len(scan.Subdomains) == 0 {
+				<div class="rounded-lg border border-dashed border-gray-300 bg-white p-12 text-center text-gray-600">
+					<svg class="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+					</svg>
+					<h3 class="text-lg font-medium text-gray-900 mb-2">No subdomains found</h3>
+					<p class="text-gray-500">This scan did not discover any subdomains yet.</p>
+				</div>
+			} else {
+				<div class="bg-white rounded-lg shadow-md overflow-hidden">
+					<div class="overflow-x-auto">
+						<table class="min-w-full divide-y divide-gray-200">
+							<thead class="bg-gray-50">
+								<tr>
+									<th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+										#
+									</th>
+									<th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+										Subdomain
+									</th>
+									<th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+										Status
+									</th>
+									<th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+										Open Ports
+									</th>
+									<th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+										Vulnerabilities
+									</th>
+									<th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+										Dir Fuzzing
+									</th>
+									<th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+										Screenshot
+									</th>
+								</tr>
+							</thead>
+							<tbody class="bg-white divide-y divide-gray-200">
+								for idx, subdomain := range scan.Subdomains {
+									<tr class="hover:bg-gray-50 transition-colors">
+										<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+											{ fmt.Sprintf("%d", idx+1) }
+										</td>
+										<td class="px-6 py-4 whitespace-nowrap">
+											<div class="flex items-center">
+												<div class="text-sm font-medium text-gray-900 font-mono">
+													{ subdomain.Domain }
+												</div>
+											</div>
+										</td>
+										<td class="px-6 py-4 whitespace-nowrap">
+											if subdomain.Status != "" {
+												<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+													{ subdomain.Status }
+												</span>
+											} else {
+												<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-600">
+													unknown
+												</span>
+											}
+										</td>
+										<td class="px-6 py-4">
+											if len(subdomain.OpenPorts) > 0 {
+												<div class="flex flex-wrap gap-1">
+													for _, port := range subdomain.OpenPorts {
+														<span class="inline-flex px-2 py-1 text-xs font-mono rounded bg-blue-50 text-blue-700 border border-blue-200">
+															{ port }
+														</span>
+													}
+												</div>
+											} else {
+												<span class="text-sm text-gray-400">—</span>
+											}
+										</td>
+										<td class="px-6 py-4">
+											if len(subdomain.Vulns) > 0 {
+												<div class="flex flex-wrap gap-1">
+													for i, vuln := range subdomain.Vulns {
+														if i < 3 {
+															<span class="inline-flex px-2 py-1 text-xs rounded bg-red-50 text-red-700 border border-red-200" title={ vuln }>
+																{ vuln }
+															</span>
+														}
+													}
+													if len(subdomain.Vulns) > 3 {
+														<span class="inline-flex px-2 py-1 text-xs rounded bg-gray-100 text-gray-600">
+															+{ fmt.Sprintf("%d", len(subdomain.Vulns)-3) }
+														</span>
+													}
+												</div>
+											} else {
+												<span class="text-sm text-gray-400">—</span>
+											}
+										</td>
+										<td class="px-6 py-4">
+											if len(subdomain.DirFuzzing) > 0 {
+												<div class="flex flex-wrap gap-1">
+													for i, dir := range subdomain.DirFuzzing {
+														if i < 2 {
+															<span class="inline-flex px-2 py-1 text-xs font-mono rounded bg-purple-50 text-purple-700 border border-purple-200" title={ dir }>
+																{ dir }
+															</span>
+														}
+													}
+													if len(subdomain.DirFuzzing) > 2 {
+														<span class="inline-flex px-2 py-1 text-xs rounded bg-gray-100 text-gray-600">
+															+{ fmt.Sprintf("%d", len(subdomain.DirFuzzing)-2) }
+														</span>
+													}
+												</div>
+											} else {
+												<span class="text-sm text-gray-400">—</span>
+											}
+										</td>
+										<td class="px-6 py-4 whitespace-nowrap">
+											if subdomain.Screenshot != "" {
+												<a
+													href={ templ.URL(fmt.Sprintf("/scan-files/%s", subdomain.Screenshot)) }
+													data-lightbox="subdomain-screenshots"
+													data-title={ subdomain.Domain }
+													class="block"
+												>
+													<img
+														src={ fmt.Sprintf("/scan-files/%s", subdomain.Screenshot) }
+														alt={ subdomain.Domain }
+														class="h-12 w-20 object-cover rounded border border-gray-200 hover:border-blue-500 transition-colors"
+														loading="lazy"
+													/>
+												</a>
+											} else {
+												<span class="text-sm text-gray-400">—</span>
+											}
+										</td>
+									</tr>
+								}
+							</tbody>
+						</table>
+					</div>
+				</div>
+				<!-- Summary Stats -->
+				<div class="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+					<div class="bg-white rounded-lg border border-gray-200 p-4">
+						<div class="text-sm text-gray-500">Total Subdomains</div>
+						<div class="text-2xl font-bold text-gray-900">{ fmt.Sprintf("%d", len(scan.Subdomains)) }</div>
+					</div>
+					<div class="bg-white rounded-lg border border-gray-200 p-4">
+						<div class="text-sm text-gray-500">With Open Ports</div>
+						<div class="text-2xl font-bold text-blue-600">
+							{ fmt.Sprintf("%d", countSubdomainsWithPorts(scan.Subdomains)) }
+						</div>
+					</div>
+					<div class="bg-white rounded-lg border border-gray-200 p-4">
+						<div class="text-sm text-gray-500">With Vulnerabilities</div>
+						<div class="text-2xl font-bold text-red-600">
+							{ fmt.Sprintf("%d", countSubdomainsWithVulns(scan.Subdomains)) }
+						</div>
+					</div>
+					<div class="bg-white rounded-lg border border-gray-200 p-4">
+						<div class="text-sm text-gray-500">With Screenshots</div>
+						<div class="text-2xl font-bold text-green-600">
+							{ fmt.Sprintf("%d", countSubdomainsWithScreenshots(scan.Subdomains)) }
+						</div>
+					</div>
+				</div>
+			}
+		</div>
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/lightbox2/2.11.4/css/lightbox.min.css"/>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/lightbox2/2.11.4/js/lightbox.min.js"></script>
+	}
+}
+
+func countSubdomainsWithPorts(subdomains []models.Subdomain) int {
+	count := 0
+	for _, s := range subdomains {
+		if len(s.OpenPorts) > 0 {
+			count++
+		}
+	}
+	return count
+}
+
+func countSubdomainsWithVulns(subdomains []models.Subdomain) int {
+	count := 0
+	for _, s := range subdomains {
+		if len(s.Vulns) > 0 {
+			count++
+		}
+	}
+	return count
+}
+
+func countSubdomainsWithScreenshots(subdomains []models.Subdomain) int {
+	count := 0
+	for _, s := range subdomains {
+		if s.Screenshot != "" {
+			count++
+		}
+	}
+	return count
+}
+
+func countNmapOutputs(subdomains []models.Subdomain) int {
+	count := 0
+	for _, sub := range subdomains {
+		for _, path := range sub.OpenPorts {
+			// Count actual port strings, not file paths
+			// Ports are formatted like "80/tcp (http)"
+			if !strings.Contains(path, "/") || strings.Contains(path, "/tcp") || strings.Contains(path, "/udp") {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+func countFfufOutputs(subdomains []models.Subdomain) int {
+	count := 0
+	for _, sub := range subdomains {
+		count += len(sub.DirFuzzing)
+	}
+	return count
 }

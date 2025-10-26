@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"pipeliner/internal/dao"
 	"pipeliner/internal/models"
 	"pipeliner/pkg/engine"
 	"pipeliner/pkg/logger"
+	"pipeliner/pkg/parsers"
 	"pipeliner/pkg/tools"
 	"sort"
 	"strings"
@@ -32,14 +32,24 @@ type ScanServiceMethods interface {
 }
 
 type scanService struct {
-	scanDao dao.ScanDAO
-	logger  *logger.Logger
+	scanDao     dao.ScanDAO
+	logger      *logger.Logger
+	scanMutexes sync.Map
 }
 
 var ErrScanNotFound = errors.New("scan not found")
 
 func NewScanService(scanDao dao.ScanDAO) ScanServiceMethods {
-	return &scanService{scanDao: scanDao, logger: logger.NewLogger(logrus.InfoLevel)}
+	return &scanService{
+		scanDao:     scanDao,
+		logger:      logger.NewLogger(logrus.InfoLevel),
+		scanMutexes: sync.Map{},
+	}
+}
+
+func (s *scanService) getScanMutex(scanID string) *sync.Mutex {
+	value, _ := s.scanMutexes.LoadOrStore(scanID, &sync.Mutex{})
+	return value.(*sync.Mutex)
 }
 
 func (s *scanService) StartScan(scan *models.Scan) (string, error) {
@@ -69,21 +79,32 @@ func (s *scanService) StartScan(scan *models.Scan) (string, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	scanDir := e.ScanDirectory()
 
+	var monitoringDone chan struct{}
 	if scanDir != "" {
-		s.monitorScanProgress(scan.UUID, scan.ScanType, scanDir, ctx)
+		monitoringDone = make(chan struct{})
+		go s.monitorScanProgress(scan.UUID, scan.ScanType, scanDir, ctx, monitoringDone)
 	} else {
 		s.logger.Warn("Scan directory not available for monitoring", logger.Fields{"scan_id": id})
 	}
 
 	go func(scanID, scanType, domain string) {
 		defer func() {
-			cancel()
 			if r := recover(); r != nil {
 				s.logger.Error("panic in background scan", logger.Fields{"scan_id": scanID, "panic": r})
 			}
 		}()
 
 		runErr := e.RunHTTP(scanType, domain)
+
+		// Signal monitors to stop
+		cancel()
+
+		// Wait for monitors to finish their final updates
+		if monitoringDone != nil {
+			s.logger.Info("Waiting for monitors to complete final processing", logger.Fields{"scan_id": scanID})
+			<-monitoringDone
+			s.logger.Info("Monitors completed, finalizing scan status", logger.Fields{"scan_id": scanID})
+		}
 
 		if runErr != nil {
 			s.logger.Error("RunHTTP failed", logger.Fields{"scan_id": scanID, "error": runErr})
@@ -119,31 +140,36 @@ func (s *scanService) DeleteScan(id string) error {
 	return s.scanDao.DeleteScan(id)
 }
 
-func (s *scanService) monitorScanProgress(scanID, scanType, scanDir string, ctx context.Context) {
+func (s *scanService) monitorScanProgress(scanID, scanType, scanDir string, ctx context.Context, done chan struct{}) {
+	defer close(done) // Signal completion when this function exits
+
 	if scanDir == "" {
 		s.logger.Warn("Scan directory missing for monitoring", logger.Fields{"scan_id": scanID})
 		return
 	}
 
-	filesToMonitor := s.getFilesToMonitor(scanType)
+	var wg sync.WaitGroup
 
-	for _, fileConfig := range filesToMonitor {
-		go s.monitorFile(scanID, scanDir, fileConfig, ctx)
-	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		s.monitorSubdomains(scanID, scanDir, ctx)
+	}()
 
-	// Monitor screenshots directory for real-time updates
-	go s.monitorScreenshots(scanID, scanDir, ctx)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		s.monitorArtifacts(scanID, scanDir, ctx)
+	}()
+
+	wg.Wait()
+	s.logger.Info("All monitors finished", logger.Fields{"scan_id": scanID})
 }
 
-type FileMonitorConfig struct {
-	FilePath string
-	Metric   string // "domains", "ports", etc.
-}
-
-func (s *scanService) monitorScreenshots(scanID, scanDir string, ctx context.Context) {
+func (s *scanService) monitorArtifacts(scanID, scanDir string, ctx context.Context) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		s.logger.Error("Failed to create screenshot watcher", logger.Fields{"error": err, "scan_id": scanID})
+		s.logger.Error("Failed to create artifact watcher", logger.Fields{"error": err, "scan_id": scanID})
 		return
 	}
 	defer watcher.Close()
@@ -153,8 +179,7 @@ func (s *scanService) monitorScreenshots(scanID, scanDir string, ctx context.Con
 		return
 	}
 
-	// Initial scan of existing screenshots
-	s.updateScreenshots(scanID, scanDir)
+	s.updateArtifacts(scanID, scanDir)
 
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
@@ -169,10 +194,23 @@ func (s *scanService) monitorScreenshots(scanID, scanDir string, ctx context.Con
 				return
 			}
 
-			// Check if it's a screenshot file
+			// Check if it's an artifact file (screenshots, nmap, or ffuf)
 			if event.Op&(fsnotify.Create|fsnotify.Write) != 0 {
+				filename := filepath.Base(event.Name)
 				ext := strings.ToLower(filepath.Ext(event.Name))
+
+				isArtifact := false
 				if ext == ".jpeg" || ext == ".jpg" || ext == ".png" {
+					isArtifact = true
+				}
+				if filename == "nmap_output.xml" {
+					isArtifact = true
+				}
+				if strings.HasSuffix(filename, "_ffuf_output.json") {
+					isArtifact = true
+				}
+
+				if isArtifact {
 					mu.Lock()
 					updatePending = true
 					mu.Unlock()
@@ -182,7 +220,7 @@ func (s *scanService) monitorScreenshots(scanID, scanDir string, ctx context.Con
 		case <-ticker.C:
 			mu.Lock()
 			if updatePending {
-				s.updateScreenshots(scanID, scanDir)
+				s.updateArtifacts(scanID, scanDir)
 				updatePending = false
 			}
 			mu.Unlock()
@@ -191,33 +229,207 @@ func (s *scanService) monitorScreenshots(scanID, scanDir string, ctx context.Con
 			if !ok {
 				return
 			}
-			s.logger.Error("Screenshot watcher error", logger.Fields{"error": err, "dir": scanDir, "scan_id": scanID})
+			s.logger.Error("Artifact watcher error", logger.Fields{"error": err, "dir": scanDir, "scan_id": scanID})
 
 		case <-ctx.Done():
-			s.logger.Info("Stopping screenshot monitor", logger.Fields{"dir": scanDir, "scan_id": scanID})
+			s.logger.Info("Stopping artifact monitor, performing final update", logger.Fields{"dir": scanDir, "scan_id": scanID})
+			s.updateArtifacts(scanID, scanDir)
 			return
 		}
 	}
 }
 
-func (s *scanService) updateScreenshots(scanID, scanDir string) {
+func (s *scanService) monitorSubdomains(scanID, scanDir string, ctx context.Context) {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		s.logger.Error("Failed to create subdomain watcher", logger.Fields{"error": err, "scan_id": scanID})
+		return
+	}
+	defer watcher.Close()
+
+	httpxPath := filepath.Join(scanDir, "httpx_output.txt")
+
+	// Wait for httpx_output.txt to be created (max 5 minutes)
+	timeout := time.After(5 * time.Minute)
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	fileExists := false
+	for !fileExists {
+		select {
+		case <-timeout:
+			s.logger.Warn("Timeout waiting for httpx_output.txt", logger.Fields{"scan_id": scanID})
+			return
+		case <-ticker.C:
+			if _, err := os.Stat(httpxPath); err == nil {
+				fileExists = true
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+
+	if err := watcher.Add(httpxPath); err != nil {
+		s.logger.Error("Error adding httpx_output.txt to watcher", logger.Fields{"error": err, "file": httpxPath, "scan_id": scanID})
+		return
+	}
+
+	s.logger.Info("Started monitoring subdomain discovery", logger.Fields{"scan_id": scanID, "file": httpxPath})
+
+	var lastSize int64
+	var mu sync.Mutex
+
+	// Initial processing
+	s.processSubdomainUpdate(scanID, httpxPath, &lastSize)
+
+	updateTicker := time.NewTicker(2 * time.Second)
+	defer updateTicker.Stop()
+
+	updatePending := false
+
+	for {
+		select {
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return
+			}
+			if event.Op&fsnotify.Write == fsnotify.Write {
+				mu.Lock()
+				updatePending = true
+				mu.Unlock()
+			}
+
+		case <-updateTicker.C:
+			mu.Lock()
+			if updatePending {
+				s.processSubdomainUpdate(scanID, httpxPath, &lastSize)
+				updatePending = false
+			}
+			mu.Unlock()
+
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return
+			}
+			s.logger.Error("Subdomain watcher error", logger.Fields{"error": err, "file": httpxPath, "scan_id": scanID})
+
+		case <-ctx.Done():
+			s.logger.Info("Stopping subdomain monitor, performing final update", logger.Fields{"file": httpxPath, "scan_id": scanID})
+			s.processSubdomainUpdate(scanID, httpxPath, &lastSize)
+			return
+		}
+	}
+}
+
+func (s *scanService) processSubdomainUpdate(scanID, filePath string, lastSize *int64) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		s.logger.Error("Failed to open httpx_output.txt", logger.Fields{"error": err, "file": filePath, "scan_id": scanID})
+		return
+	}
+	defer file.Close()
+
+	stat, err := file.Stat()
+	if err != nil {
+		s.logger.Error("Failed to stat httpx_output.txt", logger.Fields{"error": err, "file": filePath, "scan_id": scanID})
+		return
+	}
+
+	currentSize := stat.Size()
+	if currentSize <= *lastSize {
+		return
+	}
+
+	if _, err := file.Seek(*lastSize, 0); err != nil {
+		s.logger.Error("Failed to seek httpx_output.txt", logger.Fields{"error": err, "file": filePath, "scan_id": scanID})
+		return
+	}
+
+	newContent := make([]byte, currentSize-*lastSize)
+	n, err := file.Read(newContent)
+	if err != nil {
+		s.logger.Error("Failed to read new content from httpx_output.txt", logger.Fields{"error": err, "file": filePath, "scan_id": scanID})
+		return
+	}
+	newContent = newContent[:n]
+
+	lines := strings.Split(string(newContent), "\n")
+	var validLines []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+			validLines = append(validLines, trimmed)
+		}
+	}
+
+	if len(validLines) > 0 {
+		// Lock this specific scan to prevent race conditions with artifact monitoring
+		mu := s.getScanMutex(scanID)
+		mu.Lock()
+		defer mu.Unlock()
+
+		scan, err := s.scanDao.GetScanByUUID(scanID)
+		if err != nil {
+			s.logger.Error("Failed to load scan for subdomain update", logger.Fields{"error": err, "scan_id": scanID})
+			return
+		}
+
+		// Add new subdomains
+		for _, line := range validLines {
+			subdomain := models.Subdomain{
+				Domain: line,
+				Status: "discovered",
+			}
+			scan.Subdomains = append(scan.Subdomains, subdomain)
+		}
+
+		scan.NumberOfDomains = len(scan.Subdomains)
+
+		if scan.Status != "completed" && scan.Status != "failed" {
+			scan.Status = "running"
+		}
+
+		if err := s.scanDao.UpdateScan(scan); err != nil {
+			s.logger.Error("Failed to update scan with new subdomains", logger.Fields{"error": err, "scan_id": scanID})
+			return
+		}
+
+		s.logger.Info("Added new subdomains", logger.Fields{
+			"scan_id": scanID,
+			"count":   len(validLines),
+			"total":   len(scan.Subdomains),
+		})
+	}
+
+	*lastSize = currentSize
+}
+
+func (s *scanService) updateArtifacts(scanID, scanDir string) {
+	// Lock this specific scan to prevent race conditions with subdomain monitoring
+	mu := s.getScanMutex(scanID)
+	mu.Lock()
+	defer mu.Unlock()
+
 	scan, err := s.scanDao.GetScanByUUID(scanID)
 	if err != nil {
-		s.logger.Error("Failed to load scan for screenshot update", logger.Fields{"error": err, "scan_id": scanID})
+		s.logger.Error("Failed to load scan for artifact update", logger.Fields{"error": err, "scan_id": scanID})
 		return
 	}
 
 	if err := s.saveScreenShotPaths(scan, scanDir); err != nil {
 		s.logger.Error("Failed to update screenshot paths", logger.Fields{"error": err, "scan_id": scanID})
-		return
+	}
+
+	if err := s.saveArtifactPaths(scan, scanDir); err != nil {
+		s.logger.Error("Failed to update artifact paths", logger.Fields{"error": err, "scan_id": scanID})
 	}
 
 	if err := s.scanDao.UpdateScan(scan); err != nil {
-		s.logger.Error("Failed to persist screenshot update", logger.Fields{"error": err, "scan_id": scanID})
+		s.logger.Error("Failed to persist artifact update", logger.Fields{"error": err, "scan_id": scanID})
 		return
 	}
 
-	s.logger.Info("Updated screenshot paths", logger.Fields{"scan_id": scanID, "screenshots": scan.ScreenshotsPath})
+	s.logger.Info("Updated artifact paths", logger.Fields{"scan_id": scanID})
 }
 
 func (s *scanService) saveScreenShotPaths(scan *models.Scan, scanDir string) error {
@@ -254,6 +466,26 @@ func (s *scanService) saveScreenShotPaths(scan *models.Scan, scanDir string) err
 
 	sort.Strings(paths)
 
+	for i := range scan.Subdomains {
+
+		domainName := strings.TrimPrefix(scan.Subdomains[i].Domain, "https://")
+		domainName = strings.TrimPrefix(domainName, "http://")
+
+		for _, screenshotPath := range paths {
+			filename := filepath.Base(screenshotPath)
+			filenameWithoutExt := strings.TrimSuffix(filename, filepath.Ext(filename))
+
+			if strings.Contains(filenameWithoutExt, domainName) || strings.Contains(domainName, filenameWithoutExt) {
+				scan.Subdomains[i].Screenshot = screenshotPath
+				s.logger.Debug("Mapped screenshot to subdomain", logger.Fields{
+					"subdomain":  scan.Subdomains[i].Domain,
+					"screenshot": screenshotPath,
+				})
+				break // Found a match, move to next subdomain
+			}
+		}
+	}
+
 	encoded, err := json.Marshal(paths)
 	if err != nil {
 		s.logger.Error("Failed to encode screenshot paths", logger.Fields{"error": err, "scan_dir": scanDir})
@@ -264,196 +496,126 @@ func (s *scanService) saveScreenShotPaths(scan *models.Scan, scanDir string) err
 	return nil
 }
 
-func (s *scanService) getFilesToMonitor(scanType string) []FileMonitorConfig {
-	switch scanType {
-	case "subdomain":
-		return []FileMonitorConfig{
-			{FilePath: "httpx_output.txt", Metric: "domains"},
-			{FilePath: ".txt", Metric: "vulns"},
-		}
-	case "portscan":
-		return []FileMonitorConfig{
-			{FilePath: "nmap_output.txt", Metric: "ports"},
-		}
-	default:
-		return []FileMonitorConfig{
-			{FilePath: "httpx_output.txt", Metric: "domains"},
-		}
-	}
-}
-
-func (s *scanService) waitForFile(filePath string, ctx context.Context) bool {
-	if _, err := os.Stat(filePath); err == nil {
-		return true // fule exists
+func (s *scanService) saveArtifactPaths(scan *models.Scan, scanDir string) error {
+	if scanDir == "" {
+		s.logger.Warn("Scan directory not provided for artifact persistence", logger.Fields{"scan_id": scan.UUID})
+		return nil
 	}
 
-	s.logger.Info("Waiting for file to be created", logger.Fields{"file": filePath})
+	nmapPath := filepath.Join(scanDir, "nmap_output.xml")
+	if _, err := os.Stat(nmapPath); err == nil {
+		s.logger.Info("Found nmap output, parsing...", logger.Fields{"scan_id": scan.UUID, "file": nmapPath})
 
-	timeout := time.After(5 * time.Minute)
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
+		nmapParser := parsers.NewNmapParser()
+		result, err := nmapParser.Parse(nmapPath)
+		if err != nil {
+			s.logger.Error("Failed to parse nmap output", logger.Fields{"error": err, "file": nmapPath})
+		} else {
+			if hosts, ok := result["hosts"].([]map[string]any); ok {
+				s.logger.Info("Processing nmap hosts", logger.Fields{"scan_id": scan.UUID, "host_count": len(hosts)})
 
-	for {
-		select {
-		case <-timeout:
-			s.logger.Error("Timeout waiting for file to be created", logger.Fields{"file": filePath})
-			return false
+				for _, host := range hosts {
+					hostnames, hasHostnames := host["hostnames"].([]parsers.Hostname)
+					if !hasHostnames || len(hostnames) == 0 {
+						s.logger.Warn("Host has no hostnames, skipping", logger.Fields{"scan_id": scan.UUID})
+						continue
+					}
 
-		case <-ticker.C:
-			if _, err := os.Stat(filePath); err == nil {
-				s.logger.Info("File created, starting monitoring", logger.Fields{"file": filePath})
-				return true
+					for _, hostname := range hostnames {
+						nmapDomain := fmt.Sprintf("https://%s", hostname.Name)
+
+						s.logger.Debug("Looking for nmap hostname match", logger.Fields{
+							"nmap_hostname": hostname.Name,
+							"nmap_domain":   nmapDomain,
+							"scan_id":       scan.UUID,
+						})
+						if hostname.Type != "user" {
+							s.logger.Debug("Skipping non-user hostname", logger.Fields{
+								"nmap_hostname": hostname.Name,
+								"hostname_type": hostname.Type,
+								"scan_id":       scan.UUID,
+							})
+							continue
+						}
+						for i := range scan.Subdomains {
+							if scan.Subdomains[i].Domain == nmapDomain {
+								if ports, ok := host["ports"].([]parsers.Port); ok {
+									var openPorts []string
+									for _, port := range ports {
+										if port.State.State == "open" {
+											portInfo := fmt.Sprintf("%s/%s (%s)", port.PortID, port.Protocol, port.Service.Name)
+											openPorts = append(openPorts, portInfo)
+										}
+									}
+									if len(openPorts) > 0 {
+										scan.Subdomains[i].OpenPorts = openPorts
+										s.logger.Info("Set nmap results for subdomain", logger.Fields{
+											"subdomain": scan.Subdomains[i].Domain,
+											"ports":     len(openPorts),
+										})
+									}
+								}
+								break
+							}
+						}
+					}
+				}
 			}
 
-		case <-ctx.Done():
-			s.logger.Info("Context cancelled while waiting for file", logger.Fields{"file": filePath})
-			return false
 		}
 	}
-}
 
-func (s *scanService) monitorFile(scanID, scanDir string, config FileMonitorConfig, ctx context.Context) {
-	watcher, err := fsnotify.NewWatcher()
+	ffufMatches, err := filepath.Glob(filepath.Join(scanDir, "*_ffuf_output.json"))
 	if err != nil {
-		s.logger.Error("Failed to create file watcher", logger.Fields{"error": err, "file": config.FilePath, "scan_id": scanID})
-		return
-	}
-	defer watcher.Close()
-
-	fullPath := filepath.Join(scanDir, config.FilePath)
-
-	if !s.waitForFile(fullPath, ctx) {
-		return
+		s.logger.Error("Failed to glob ffuf files", logger.Fields{"error": err, "scan_dir": scanDir})
 	}
 
-	if err := watcher.Add(fullPath); err != nil {
-		s.logger.Error("Error adding file to watcher", logger.Fields{"error": err, "file": fullPath, "scan_id": scanID})
-		return
-	}
+	for _, ffufPath := range ffufMatches {
+		s.logger.Info("Found ffuf output, parsing...", logger.Fields{"scan_id": scan.UUID, "file": ffufPath})
 
-	var lastSize int64
-	var mu sync.Mutex
-
-	s.processFileUpdate(scanID, config, fullPath, &lastSize)
-
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	updatePending := false
-
-	for {
-		select {
-		case event, ok := <-watcher.Events:
-			if !ok {
-				return
-			}
-
-			if event.Op&fsnotify.Write == fsnotify.Write {
-				mu.Lock()
-				updatePending = true
-				mu.Unlock()
-			}
-
-		case <-ticker.C:
-			mu.Lock()
-			if updatePending {
-				s.processFileUpdate(scanID, config, fullPath, &lastSize)
-				updatePending = false
-			}
-			mu.Unlock()
-
-		case err, ok := <-watcher.Errors:
-			if !ok {
-				return
-			}
-			s.logger.Error("File watcher error", logger.Fields{"error": err, "file": fullPath, "scan_id": scanID})
-
-		case <-ctx.Done():
-			s.logger.Info("Stopping file monitor", logger.Fields{"file": fullPath, "scan_id": scanID})
-			return
+		ffufParser := parsers.NewFuffParser()
+		result, err := ffufParser.Parse(ffufPath)
+		if err != nil {
+			s.logger.Error("Failed to parse ffuf output", logger.Fields{"error": err, "file": ffufPath})
+			continue
 		}
-	}
-}
 
-func (s *scanService) processFileUpdate(scanID string, config FileMonitorConfig, filePath string, lastSize *int64) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		s.logger.Error("Failed to open file", logger.Fields{"error": err, "file": filePath, "scan_id": scanID})
-		return
-	}
-	defer file.Close()
+		if results, ok := result["results"].([]parsers.FuffResult); ok {
+			filename := filepath.Base(ffufPath)
 
-	stat, err := file.Stat()
-	if err != nil {
-		s.logger.Error("Failed to stat file", logger.Fields{"error": err, "file": filePath, "scan_id": scanID})
-		return
-	}
+			for i := range scan.Subdomains {
+				domainClean := strings.Replace(scan.Subdomains[i].Domain, "://", ".", -1)
+				domainClean = strings.Replace(domainClean, "https.", "", -1)
+				domainClean = strings.Replace(domainClean, "http.", "", -1)
 
-	currentSize := stat.Size()
-	if currentSize <= *lastSize {
-		return
-	}
-
-	if _, err := file.Seek(*lastSize, io.SeekStart); err != nil {
-		s.logger.Error("Failed to seek file", logger.Fields{"error": err, "file": filePath, "scan_id": scanID})
-		return
-	}
-
-	newContent := make([]byte, currentSize-*lastSize)
-	n, err := file.Read(newContent)
-	if err != nil && err != io.EOF {
-		s.logger.Error("Failed to read new content", logger.Fields{"error": err, "file": filePath, "scan_id": scanID})
-		return
-	}
-	newContent = newContent[:n]
-
-	lines := strings.Split(string(newContent), "\n")
-	newCount := 0
-	for _, line := range lines {
-		if strings.TrimSpace(line) != "" {
-			newCount++
+				if strings.Contains(filename, domainClean) || strings.Contains(filename, scan.Subdomains[i].Domain) {
+					// Add discovered paths/URLs to DirFuzzing
+					for _, r := range results {
+						if r.Status >= 200 && r.Status < 400 {
+							pathInfo := fmt.Sprintf("%s [%d]", r.URL, r.Status)
+							// Check if not already present
+							found := false
+							for _, existing := range scan.Subdomains[i].DirFuzzing {
+								if existing == pathInfo {
+									found = true
+									break
+								}
+							}
+							if !found {
+								scan.Subdomains[i].DirFuzzing = append(scan.Subdomains[i].DirFuzzing, pathInfo)
+							}
+						}
+					}
+					s.logger.Info("Added ffuf results to subdomain", logger.Fields{
+						"subdomain": scan.Subdomains[i].Domain,
+						"count":     len(results),
+					})
+				}
+			}
 		}
 	}
 
-	if newCount > 0 {
-		s.incrementScanMetric(scanID, config.Metric, newCount)
-	}
-	*lastSize = currentSize
-}
-
-func (s *scanService) incrementScanMetric(scanID, metric string, increment int) {
-	if increment <= 0 {
-		return
-	}
-
-	scan, err := s.scanDao.GetScanByUUID(scanID)
-	if err != nil {
-		s.logger.Error("Failed to load scan for metric update", logger.Fields{"error": err, "scan_id": scanID, "metric": metric})
-		return
-	}
-
-	switch metric {
-	case "domains":
-		scan.NumberOfDomains += increment
-	default:
-		s.logger.Warn("Unknown metric type for scan update", logger.Fields{"scan_id": scanID, "metric": metric})
-	}
-
-	if scan.Status != "completed" {
-		scan.Status = "running"
-	}
-
-	if err := s.scanDao.UpdateScan(scan); err != nil {
-		s.logger.Error("Failed to update scan metric", logger.Fields{"error": err, "scan_id": scanID, "metric": metric})
-		return
-	}
-
-	s.logger.Info("Updated scan metric", logger.Fields{
-		"scan_id":   scanID,
-		"metric":    metric,
-		"increment": increment,
-		"total":     scan.NumberOfDomains,
-	})
+	return nil
 }
 
 func (s *scanService) markScanFailed(scanID string) {

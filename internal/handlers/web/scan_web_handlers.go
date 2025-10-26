@@ -137,3 +137,33 @@ func (h *ScanWebHandler) ScreenShotsPage(c *gin.Context) {
 
 	c.Status(http.StatusOK)
 }
+
+func (h *ScanWebHandler) SubdomainsPage(c *gin.Context) {
+	scanID := c.Param("id")
+	if scanID == "" {
+		h.logger.Warn("Subdomains page requested without scan ID", logger.Fields{})
+		c.Status(http.StatusBadRequest)
+		return
+	}
+
+	scan, err := h.scanService.GetScanByUUID(scanID)
+	if err != nil {
+		h.logger.Error("Failed to load scan for subdomains", logger.Fields{"error": err, "scan_id": scanID})
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+
+	if scan == nil {
+		h.logger.Warn("Scan not found for subdomains", logger.Fields{"scan_id": scanID})
+		c.Status(http.StatusNotFound)
+		return
+	}
+
+	if err := templates.ScanSubdomainsPage(scan).Render(c, c.Writer); err != nil {
+		h.logger.Error("Failed to render subdomains page", logger.Fields{"error": err, "scan_id": scanID})
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+
+	c.Status(http.StatusOK)
+}

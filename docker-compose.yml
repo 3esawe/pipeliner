@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: pipeliner-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-pipeliner}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-pipeliner}
+      POSTGRES_DB: ${DB_NAME:-pipeliner}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-pipeliner}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pipeliner-network
+
+  # Pipeliner Application
+  pipeliner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pipeliner-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Database configuration
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-pipeliner}
+      DB_PASSWORD: ${DB_PASSWORD:-pipeliner}
+      DB_NAME: ${DB_NAME:-pipeliner}
+      
+      # Application configuration
+      GIN_MODE: ${GIN_MODE:-release}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      
+      # Timezone
+      TZ: ${TZ:-UTC}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    volumes:
+      # Persist scan results
+      - scan_data:/app/scans
+      
+      # Config files (optional - for custom configs)
+      - ./config:/app/config:ro
+      
+      # If you want to mount tool binaries from host
+      # - /usr/local/bin/subfinder:/usr/local/bin/subfinder:ro
+      # - /usr/local/bin/nmap:/usr/local/bin/nmap:ro
+    networks:
+      - pipeliner-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Adminer for database management
+  adminer:
+    image: adminer:latest
+    container_name: pipeliner-adminer
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    ports:
+      - "${ADMINER_PORT:-8080}:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    networks:
+      - pipeliner-network
+    profiles:
+      - tools
+
+volumes:
+  postgres_data:
+    driver: local
+  scan_data:
+    driver: local
+
+networks:
+  pipeliner-network:
+    driver: bridge
