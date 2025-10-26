@@ -1,55 +1,48 @@
 # Pipeliner
 
-**Pipeliner** is a modular, high-performance security scanning pipeline tool designed for reconnaissance and vulnerability assessment. It orchestrates multiple security tools in a configurable, scalable manner with support for different execution strategies and intelligent hook systems.
+> ⚠️ **This is currently in beta!** Things might break, features might change. If you find bugs or have ideas, open an issue.
 
-## 🚀 Features
+So basically I got tired of running the same recon commands over and over, waiting for subfinder to finish before running httpx, then nuclei, and so on. Pipeliner is my solution to that - it chains your security tools together in a pipeline you configure once and run whenever.
 
-- **Multiple Execution Strategies**: Sequential, Concurrent, and Hybrid (DAG-based) execution
-- **Configurable Pipelines**: YAML-based configuration for maximum flexibility
-- **Hook System**: Stage Hooks (system-controlled) and PostHooks (user-defined)
-- **Discord Integration**: Real-time notifications for scan results
-- **Periodic Scanning**: Automated recurring scans with configurable intervals
-- **Dependency Management**: Smart tool orchestration based on dependencies
-- **Progress Monitoring**: Real-time progress tracking and logging
-- **Graceful Shutdown**: Proper signal handling and resource cleanup
+It's built in Go, uses YAML configs, and tries to be smart about running things in parallel when it can. Also has some nice extras like Discord notifications and a web UI for tracking scans.
 
-## 📦 Installation
+## What it does
 
-### Prerequisites
+- **Run tools in sequence, parallel, or smart DAG mode** - You pick how things run
+- **YAML configs** - Write once, run many times
+- **Hook system** - Do things between stages (like combining outputs or sending notifications)
+- **Discord bot** - Get pinged when your scans finish or find something
+- **Periodic scans** - Set it and forget it, scans run every X hours
+- **Web UI** - Track your scans, view results, see screenshots (beta feature)
+- **Actually handles dependencies** - httpx won't run before subfinder finishes
 
-- Go 1.23.0 or later
-- Security tools you want to orchestrate (subfinder, httpx, nuclei, etc.)
+## Getting started
 
-### Build from Source
+You'll need:
+- Go 1.23+ 
+- Whatever security tools you want to run (subfinder, httpx, nuclei, etc.)
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/3esawe/pipeliner.git
 cd pipeliner
 make build
 ```
 
-### Binary Usage
+That's it. Binary will be in `bin/pipeliner`.
 
-```bash
-./bin/pipeliner --help
-```
+## Quick examples
 
-## 🎯 Quick Start
-
-### 1. List Available Configurations
-
+List what configs you have:
 ```bash
 ./bin/pipeliner list-configs
 ```
 
-### 2. Run a Basic Scan
-
+Run a basic scan:
 ```bash
 ./bin/pipeliner scan -m full_recon -d example.com
 ```
 
-### 3. Run with Custom Options
-
+Run with custom timeout and periodic scanning:
 ```bash
 ./bin/pipeliner scan -m full_recon -d example.com \
   --timeout 2h \
@@ -57,321 +50,129 @@ make build
   --verbose
 ```
 
-## 📖 Command Reference
+## How to configure it
 
-### Global Commands
-
-| Command | Description |
-|---------|-------------|
-| `scan` | Execute a pipeline module against a target domain |
-| `list-configs` | Display all available configuration files and descriptions |
-| `list-hooks` | Show available hooks for YAML configurations |
-| `completion` | Generate shell autocompletion scripts |
-| `help` | Display help information |
-
-### Global Flags
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--config` | string | `./config` | Configuration directory path |
-| `--periodic-hours` | int | `5` | Hours between periodic scans |
-| `--timeout` | duration | `30m` | Global timeout for operations |
-| `-v, --verbose` | bool | `false` | Enable verbose logging |
-
-### Scan Command Flags
-
-| Flag | Type | Required | Description |
-|------|------|----------|-------------|
-| `-m, --module` | string | ✅ | Pipeline module to execute |
-| `-d, --domain` | string | ✅ | Target domain for scanning |
-
-## ⚙️ Configuration
-
-### YAML Configuration Structure
-
-Pipeliner uses YAML files to define scanning pipelines. Here's the complete structure:
+Everything's in YAML files under `config/`. Here's what the structure looks like:
 
 ```yaml
-# Optional description displayed in list-configs
-description: "Pipeline description"
+description: "What this pipeline does"
+execution_mode: "hybrid"  # sequential, concurrent, or hybrid
 
-# Execution strategy: sequential, concurrent, or hybrid
-execution_mode: "hybrid"
-
-# List of tools to execute
 tools:
-  - name: "tool-name"              # Unique identifier
-    description: "Tool description" # Optional description
-    type: "tool-type"              # Stage type (see Tool Types)
-    command: "command-name"        # Executable command
-    depends_on: ["tool1", "tool2"] # Optional dependencies (hybrid mode)
-    timeout: 30m                   # Optional tool-specific timeout
-    retries: 3                     # Optional retry count
+  - name: "subfinder"
+    description: "Find subdomains"
+    type: "domain_enum"       # Stage type
+    command: "subfinder"      # What to actually run
+    depends_on: []            # Empty = runs first
+    timeout: 30m              # Optional
+    retries: 3                # Optional
     
-    # Command flags configuration
     flags:
-      - flag: "--flag-name"        # Flag name
-        option: "OptionName"       # Maps to Options field
-        required: true             # Whether flag is required
-        default: "value"           # Default value
-        is_boolean: false          # Boolean flag (no value)
-        is_positional: false       # Positional argument
+      - flag: "-d"
+        option: "Domain"      # Maps to the --domain flag you pass
+        required: true
+      - flag: "-o"
+        default: "subfinder_output.txt"
     
-    # User-defined hooks (optional)
     posthooks:
-      - "NotifierHook"             # Hook name from list-hooks
+      - "NotifierHook"        # Run this after the tool finishes
 ```
 
-### Tool Types (Stages)
+### Execution modes explained
 
-Pipeliner organizes tools into logical stages:
-
-| Stage | Type Value | Description | Stage Hook |
-|-------|------------|-------------|------------|
-| **Domain Enumeration** | `domain_enum` | Subdomain discovery tools | `CombineOutput` |
-| **Reconnaissance** | `recon` | HTTP probing, service discovery | - |
-| **Fingerprinting** | `fingerprint` | Technology detection, screenshots | - |
-| **Vulnerability Scanning** | `vuln` | Security assessment tools | `NotifierHook` |
-
-### Execution Strategies
-
-#### 1. Sequential Strategy
-
-Executes tools one after another in the order defined in the configuration.
-
-**Characteristics:**
-- **Execution Order**: Tools run in YAML definition order
-- **Resource Usage**: Low (one tool at a time)
-- **Completion Time**: Longest (sum of all tool times)
-- **Dependencies**: Not supported (order-based)
-- **Best For**: Simple pipelines, resource-constrained environments
-
-**Example:**
+**Sequential** - Tools run one after another in order. Simple but slow.
 ```yaml
 execution_mode: sequential
-tools:
-  - name: subfinder
-    # runs first
-  - name: httpx  
-    # runs after subfinder completes
-  - name: nuclei
-    # runs after httpx completes
 ```
 
-#### 2. Concurrent Strategy
-
-Executes all tools simultaneously with no dependency consideration.
-
-**Characteristics:**
-- **Execution Order**: All tools start simultaneously
-- **Resource Usage**: High (all tools running)
-- **Completion Time**: Fastest (longest single tool time)
-- **Dependencies**: Not supported (parallel execution)
-- **Best For**: Independent tools, high-resource environments
-
-**Example:**
+**Concurrent** - Everything runs at once. Fast but chaotic if tools depend on each other.
 ```yaml
 execution_mode: concurrent
-tools:
-  - name: subfinder
-    # starts immediately
-  - name: chaos-client
-    # starts immediately
-  - name: findomain
-    # starts immediately
 ```
 
-**⚠️ Note**: Tools should not depend on each other's output in concurrent mode.
-
-#### 3. Hybrid Strategy (Recommended)
-
-Uses Directed Acyclic Graph (DAG) to respect dependencies while maximizing parallelism.
-
-**Characteristics:**
-- **Execution Order**: Dependency-aware with maximum parallelism
-- **Resource Usage**: Optimized (parallel where possible)
-- **Completion Time**: Optimized (respects dependencies)
-- **Dependencies**: Full support via `depends_on`
-- **Best For**: Complex pipelines with tool interdependencies
-
-**Example:**
+**Hybrid (recommended)** - Uses a DAG to figure out what can run in parallel while respecting dependencies. Best of both worlds.
 ```yaml
 execution_mode: hybrid
 tools:
   - name: subfinder
     type: domain_enum
-    # no dependencies - starts immediately
-    
-  - name: findomain  
-    type: domain_enum
-    # no dependencies - starts with subfinder
+    # runs immediately
     
   - name: httpx
     type: recon
-    depends_on: ["subfinder", "findomain"]
-    # waits for both domain enum tools
-    
-  - name: nuclei
-    type: vuln
-    depends_on: ["httpx"]
-    # waits for httpx to complete
+    depends_on: ["subfinder"]
+    # waits for subfinder to finish
 ```
 
-**DAG Execution Flow:**
-```
-subfinder ──┐
-            ├─→ httpx ──→ nuclei
-findomain ──┘
-```
+### Tool types (stages)
 
-## 🔗 Hook System
+The `type` field tells Pipeliner what stage a tool belongs to:
 
-Pipeliner features a sophisticated two-tier hook system:
+- `domain_enum` - Subdomain enumeration (subfinder, findomain, etc.)
+  - Auto triggers `CombineOutput` hook when all domain enum tools finish
+- `recon` - HTTP probing, port scanning (httpx, nmap, etc.)
+- `fingerprint` - Screenshots, tech detection (gowitness, wappalyzer, etc.)
+- `vuln` - Vulnerability scanning (nuclei, nikto, etc.)
+  - Auto triggers `NotifierHook` when all vuln tools finish
 
-### Stage Hooks (System-Controlled)
+## Hook system
 
-Automatically triggered when **ALL** tools in a stage complete.
+Pipeliner has two types of hooks:
 
-| Hook | Stage | Purpose |
-|------|--------|---------|
-| `CombineOutput` | `domain_enum` | Combines all subdomain results into `httpx_input.txt` |
-| `NotifierHook` | `vuln` | Sends notifications for vulnerability findings |
+**Stage hooks** (automatic) - Run when ALL tools in a stage finish:
+- `CombineOutput` - Runs after `domain_enum`, creates `httpx_input.txt` with all found subdomains
+- `NotifierHook` - Runs after `vuln`, sends findings to Discord
 
-**Execution Example:**
-```
-subfinder (domain_enum) ──┐
-                         ├─→ Stage Hook: CombineOutput
-findomain (domain_enum) ──┘
-                           ↓
-                         httpx (recon)
-                           ↓
-                         nuclei (vuln) ──→ Stage Hook: NotifierHook
-```
-
-### PostHooks (User-Controlled)
-
-Defined in YAML configurations, executed after **EACH** individual tool completes.
-
-**Available PostHooks:**
-- `NotifierHook`: Send Discord notifications for tool output
-
-**YAML Usage:**
+**Post hooks** (you control) - Run after individual tools:
 ```yaml
 tools:
   - name: httpx
     command: httpx
     posthooks:
-      - "NotifierHook"  # Runs after httpx completes
+      - "NotifierHook"  # Send notification when this specific tool finishes
 ```
 
-
-### Hook Execution Timeline
-
-```
-Tool Execution → PostHooks → Stage Check → Stage Hooks (if stage complete)
+Check available hooks:
+```bash
+./bin/pipeliner list-hooks
 ```
 
-## 🔔 Discord Integration
+## Discord notifications
 
-Enable real-time notifications for scan results.
+If you want to get pinged when scans finish or find vulns:
 
-### Setup
-
-1. Create a Discord application and bot
-2. Set the environment variable:
+1. Make a Discord bot (Google it, takes 2 minutes)
+2. Set the token:
    ```bash
    export DISCORD_TOKEN="your-bot-token"
    ```
+3. Add hooks to your YAML (see above)
 
-3. Configure hooks in your YAML:
-   ```yaml
-   tools:
-     - name: nuclei
-       posthooks:
-         - "NotifierHook"
-   ```
+That's it. You'll get messages when things complete or when nuclei finds something.
 
-### Notification Types
+## Web UI (Beta)
 
-- **Individual Tool Results**: Via PostHooks
-- **Stage Completion**: Via Stage Hooks
-- **Vulnerability Findings**: Automatic for `vuln` stage tools
-
-## 📊 Monitoring and Logging
-
-### Logging Levels
-
-| Flag | Level | Output |
-|------|-------|--------|
-| Default | INFO | Basic execution flow |
-| `--verbose` | DEBUG | Detailed execution information |
-
-### Progress Tracking
-
-Pipeliner provides real-time progress updates:
-
-```
-INFO[0000] Executing tools in hybrid (DAG-based)
-INFO[0000] Hybrid DAG workers: 4
-INFO[0001] Tool subfinder completed successfully
-INFO[0002] Tool findomain completed successfully  
-INFO[0002] Stage domain_enum completed. Triggering stage hooks...
-INFO[0002] Stage hook combine_output completed successfully
-INFO[0003] Tool httpx completed successfully
-```
-
-### Output Management
-
-- **Working Directory**: Each scan creates a timestamped directory
-- **Tool Outputs**: Individual files per tool
-- **Combined Results**: Stage hooks create consolidated files
-- **Logs**: Structured logging with timestamps and context
-
-## 🔄 Periodic Scanning
-
-Configure automated recurring scans:
+There's a web UI now for tracking scans. Start the server:
 
 ```bash
-# Scan every 8 hours
-./bin/pipeliner scan -m full_recon -d example.com --periodic-hours 8
+./bin/pipeliner serve
 ```
 
-**Features:**
-- **Configurable Intervals**: Any number of hours
-- **Persistent Execution**: Continues until manually stopped
-- **Directory Management**: New timestamped directory per scan
-- **Graceful Shutdown**: SIGINT/SIGTERM handling
+Then go to `http://localhost:8080`. You can:
+- View all scans
+- See real-time progress
+- Check subdomain results with open ports, screenshots, vulns
+- View directory fuzzing results
 
-## 📁 Directory Structure
+**Note:** The UI is pretty rough around the edges right now. Works but could be prettier.
 
-```
-pipeliner/
-├── bin/                    # Built binaries
-├── cmd/pipeliner/         # Application entry point
-├── config/                # YAML configuration files
-│   ├── full_recon.yaml    # Complete recon pipeline
-│   ├── subdomain.yaml     # Basic subdomain enumeration
-│   └── ...
-├── internal/              # Internal packages
-│   ├── notification/      # Discord integration
-│   └── utils/             # Utility functions
-├── pkg/                   # Public packages
-│   ├── engine/            # Core execution engine
-│   ├── hooks/             # Hook implementations
-│   ├── logger/            # Structured logging
-│   ├── tools/             # Tool orchestration
-│   └── ...
-├── scans/                 # Scan output directories
-│   └── full_recon_example.com_2025-08-24_18-03-30/
-└── Makefile              # Build automation
-```
+## Example configs
 
-## 🛠️ Configuration Examples
+Check the `config/` folder for examples. Here are a few patterns:
 
-### Basic Subdomain Enumeration
-
+**Basic subdomain enum:**
 ```yaml
-description: "Basic subdomain discovery"
+description: "Just find subdomains"
 execution_mode: concurrent
 tools:
   - name: subfinder
@@ -383,25 +184,13 @@ tools:
         required: true
       - flag: "-o"
         default: "subfinder_output.txt"
-
-  - name: findomain
-    type: domain_enum
-    command: findomain
-    flags:
-      - flag: "-t"
-        option: "Domain"
-        required: true
-      - flag: "-u"
-        default: "findomain_output.txt"
 ```
 
-### Complete Reconnaissance Pipeline
-
+**Full recon pipeline:**
 ```yaml
-description: "Full recon with vulnerability scanning"
+description: "The whole shebang"
 execution_mode: hybrid
 tools:
-  # Stage 1: Domain Enumeration (Parallel)
   - name: subfinder
     type: domain_enum
     command: subfinder
@@ -412,30 +201,16 @@ tools:
       - flag: "-o"
         default: "subfinder_output.txt"
 
-  - name: findomain
-    type: domain_enum
-    command: findomain
-    flags:
-      - flag: "-t"
-        option: "Domain"
-        required: true
-      - flag: "-u"
-        default: "findomain_output.txt"
-
-  # Stage 2: HTTP Probing (After domain enumeration)
   - name: httpx
     type: recon
     command: httpx
-    depends_on: ["subfinder", "findomain"]
+    depends_on: ["subfinder"]
     flags:
       - flag: "-l"
-        default: "httpx_input.txt"  # Created by CombineOutput hook
+        default: "httpx_input.txt"
       - flag: "-o"
         default: "httpx_output.txt"
-    posthooks:
-      - "NotifierHook"  # Notify when HTTP probing completes
 
-  # Stage 3: Vulnerability Scanning (After HTTP probing)
   - name: nuclei
     type: vuln
     command: nuclei
@@ -445,131 +220,98 @@ tools:
         default: "httpx_output.txt"
       - flag: "-o"
         default: "nuclei_output.txt"
-      - flag: "-s"
-        default: "high,critical"
 ```
 
-## 🚨 Error Handling
+## Periodic scans
 
-### Tool Failures
-
-- **Sequential**: Pipeline stops on first failure
-- **Concurrent**: Collects all failures, reports at end
-- **Hybrid**: Failed tools skip dependents, continues with independent tools
-
-### Hook Failures
-
-- **PostHooks**: Tool marked as failed, pipeline may stop
-- **Stage Hooks**: Logged but pipeline continues
-- **Graceful Degradation**: Core functionality preserved
-
-### Timeout Handling
+Want to run scans every X hours? Just add `--periodic-hours`:
 
 ```bash
-# Global timeout for all operations
---timeout 2h
-
-# Per-tool timeout in YAML
-tools:
-  - name: slow-tool
-    timeout: 45m
+./bin/pipeliner scan -m full_recon -d example.com --periodic-hours 6
 ```
 
-## 🔧 Troubleshooting
+Runs the scan, waits 6 hours, runs it again. Repeat forever until you Ctrl+C it.
 
-### Common Issues
+Each scan gets its own timestamped directory in `scans/`.
 
-1. **Tool Not Found**
-   ```
-   ERROR: execution failed: executable not found
-   ```
-   **Solution**: Ensure security tools are installed and in PATH
+## Common issues
 
-2. **Permission Denied**
-   ```
-   ERROR: permission denied
-   ```
-   **Solution**: Check file permissions and user privileges
+**"Tool not found"** - Install the security tool (subfinder, httpx, etc.) and make sure it's in your PATH
 
-3. **Hook Not Found**
-   ```
-   WARN: Post hook SomeHook not found
-   ```
-   **Solution**: Use `./bin/pipeliner list-hooks` to see available hooks
+**"Permission denied"** - Check file permissions or run with sudo if needed (not recommended though)
 
-4. **Configuration Errors**
-   ```
-   ERROR: failed to prepare scan: invalid options
-   ```
-   **Solution**: Validate YAML syntax and required fields
+**Scan doesn't finish** - Check `--timeout`, might need to increase it
 
-### Debug Mode
+**Discord notifications not working** - Make sure `DISCORD_TOKEN` is set and the bot is in your server
 
-Enable verbose logging for detailed troubleshooting:
-
+Use `--verbose` to see what's actually happening:
 ```bash
-./bin/pipeliner scan -m config-name -d target.com --verbose
+./bin/pipeliner scan -m config-name -d example.com --verbose
 ```
 
-### Validation
-
-Check configurations before running:
+## Commands reference
 
 ```bash
-# List available configurations
+# Run a scan
+./bin/pipeliner scan -m <module-name> -d <domain>
+
+# List available configs
 ./bin/pipeliner list-configs
 
-# Validate specific config by attempting dry run
-./bin/pipeliner scan -m config-name -d example.com --timeout 1s
+# See what hooks are available
+./bin/pipeliner list-hooks
+
+# Start the web UI
+./bin/pipeliner serve
+
+# Get help
+./bin/pipeliner --help
 ```
 
-## 🤝 Contributing
+**Flags:**
+- `-m, --module` - Which YAML config to use (required)
+- `-d, --domain` - Target domain (required)
+- `--timeout` - How long to wait before giving up (default: 30m)
+- `--periodic-hours` - Run every X hours (default: 5)
+- `--verbose` - Show debug logs
+- `--config` - Path to config directory (default: ./config)
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+## Project structure
 
-### Development Setup
-
-```bash
-# Clone repository
-git clone <repository-url>
-cd pipeliner
-
-# Install dependencies
-go mod download
-
-# Build and test
-make build
-go test ./...
-
-# Run locally
-./bin/pipeliner scan -m subdomain -d example.com --verbose
+```
+pipeliner/
+├── bin/              # Compiled binary goes here
+├── cmd/pipeliner/    # Main entry point
+├── config/           # Your YAML configs
+├── internal/         # Internal packages (services, db, etc.)
+├── pkg/              # Core engine and tools
+├── scans/            # Scan outputs (timestamped directories)
+├── templates/        # Web UI templates
+└── static/           # CSS and stuff
 ```
 
-## 📜 License
+Scan output directories look like:
+```
+scans/full_recon_example.com_2025-08-24_18-03-30/
+├── subfinder_output.txt
+├── httpx_output.txt
+├── httpx_input.txt
+├── nuclei_output.txt
+└── screenshots/
+```
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+## Contributing
 
-## 🙏 Acknowledgments
+If you want to contribute or have ideas, open an issue or PR. The code is probably not perfect - I built this to scratch my own itch.
 
-- [Cobra](https://github.com/spf13/cobra) for CLI framework
-- [Viper](https://github.com/spf13/viper) for configuration management
-- [Logrus](https://github.com/sirupsen/logrus) for structured logging
-- [DiscordGo](https://github.com/bwmarrin/discordgo) for Discord integration
+## Things I want to add
 
-## 📋 Roadmap
+- [ ] Better web UI (it's functional but ugly)
+- [ ] More hooks and customization
+- [ ] Result diffing between scans
+- [ ] Better error recovery
+- [ ] Maybe a plugin system?
+- [ ] Cloud storage for scan results
+- [ ] Better screenshot handling
 
-- [ ] Web UI for pipeline management
-- [ ] Plugin system for custom tools
-- [ ] Cloud deployment templates
-- [ ] Advanced scheduling (cron-like)
-- [ ] Result correlation and analysis
-- [ ] Multi-target batch processing
-- [ ] Custom hook development SDK
-
----
-
-**Happy Scanning!** 🔍✨
+Built because I was tired of manual recon workflows. Hope it saves you some time too.
