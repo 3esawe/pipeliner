@@ -7,7 +7,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// Package-level logger for stage operations
 var stageLogger = logger.NewLogger(logrus.InfoLevel)
 
 type Stage string
@@ -36,9 +35,9 @@ func stageForToolType(toolType string) Stage {
 
 type stageTracker struct {
 	mu             sync.Mutex
-	completed      map[string]bool // toolName -> finished
+	completed      map[string]bool
 	stageTools     map[Stage][]string
-	stageCompleted map[Stage]bool // track reported stages
+	stageCompleted map[Stage]bool
 }
 
 func newStageTracker(tools []Tool) *stageTracker {
@@ -64,7 +63,7 @@ func (st *stageTracker) markCompleted(toolName string) Stage {
 
 	for stage, tools := range st.stageTools {
 		if st.stageCompleted[stage] {
-			continue // already reported
+			continue
 		}
 		done := true
 		for _, t := range tools {
@@ -83,26 +82,20 @@ func (st *stageTracker) markCompleted(toolName string) Stage {
 
 var stageHooks = make(map[Stage][]StageHook)
 
-// RegisterStageHook registers a hook to run when ALL tools in a stage complete
-// This is system-controlled - runs once per stage completion
 func RegisterStageHook(stage Stage, hook StageHook) {
 	stageHooks[stage] = append(stageHooks[stage], hook)
 	stageLogger.Infof("Registered stage hook: %s for stage %s", hook.Name(), stage)
 }
 
-// GetStageHooks returns hooks registered for a specific stage
 func GetStageHooks(stage Stage) []StageHook {
 	return stageHooks[stage]
 }
 
-// Deprecated: Use RegisterStageHook instead
 func RegisterHookForStage(stage Stage, hook Hook) {
-	// Wrap legacy hook to implement StageHook interface
 	wrapper := &legacyStageHookWrapper{hook: hook}
 	RegisterStageHook(stage, wrapper)
 }
 
-// Deprecated: Use GetStageHooks instead
 func GetHooksForStage(stage Stage) []Hook {
 	stageHooks := GetStageHooks(stage)
 	legacyHooks := make([]Hook, 0, len(stageHooks))
@@ -116,7 +109,6 @@ func GetHooksForStage(stage Stage) []Hook {
 	return legacyHooks
 }
 
-// legacyStageHookWrapper wraps legacy Hook interface to implement StageHook interface
 type legacyStageHookWrapper struct {
 	hook Hook
 }

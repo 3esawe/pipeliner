@@ -6,13 +6,13 @@ import (
 	"pipeliner/api/routes"
 	"pipeliner/internal/config"
 	"pipeliner/internal/database"
+	"pipeliner/pkg/engine"
 
 	"github.com/spf13/cobra"
 )
 
 type ServerOpts struct {
 	Port int
-	Ip   string
 }
 
 func NewServerCommand() *cobra.Command {
@@ -25,6 +25,11 @@ func NewServerCommand() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			cmd.SilenceUsage = true
 			cfg := config.LoadConfig()
+
+			// Initialize engine queue
+			engine.InitGlobalQueue(cfg.MaxConcurrentScans)
+			cmd.Printf("✓ Scan queue initialized (max concurrent: %d)\n", cfg.MaxConcurrentScans)
+
 			db, err := database.InitDB(cfg)
 			if err != nil {
 				cmd.PrintErrf("failed to initialize database: %v\n", err)
@@ -36,7 +41,6 @@ func NewServerCommand() *cobra.Command {
 	}
 
 	serverCmd.Flags().IntVarP(&ServerConfig.Port, "port", "p", 8080, "Port to run the server on")
-	serverCmd.Flags().StringVarP(&ServerConfig.Ip, "ip", "i", "localhost", "IP address to bind the server to")
 
 	return serverCmd
 }

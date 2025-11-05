@@ -21,4 +21,7 @@ func InitScanRoutes(router *gin.RouterGroup, db *gorm.DB) {
 		scanRoutes.GET("", handlers.ListScans)
 		scanRoutes.DELETE("/:id", handlers.DeleteScan)
 	}
+
+	// Queue status endpoint
+	router.GET("/queue/status", handlers.GetQueueStatus)
 }

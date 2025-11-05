@@ -13,9 +13,6 @@ func Execute() error {
 		Use:   "pipeliner",
 		Short: "A modular pipeline tool for security scanning",
 		Long:  `Pipeliner is a modular tool for running security scanning pipelines with configurable parameters`,
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-
-		},
 	}
 
 	// Initialize hooks

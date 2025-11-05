@@ -11,17 +11,20 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// Package-level logger for tools chain operations
 var chainLogger = logger.NewLogger(logrus.InfoLevel)
 
-// executePostHooks runs user-defined post hooks for an individual tool
-// These hooks run after EACH tool completes (user-controlled via YAML)
+func getOutputDir(options *Options) string {
+	if options != nil && options.WorkingDir != "" {
+		return options.WorkingDir
+	}
+	return "."
+}
+
 func executePostHooks(ctx context.Context, toolName string, hookNames []string, options *Options) error {
 	if len(hookNames) == 0 {
 		return nil
 	}
 
-	// Use logger from options, fallback to direct logging if not available
 	if options.Logger != nil {
 		options.Logger.Info("Executing post hooks for tool", logger.Fields{
 			"hook_count": len(hookNames),
@@ -34,7 +37,6 @@ func executePostHooks(ctx context.Context, toolName string, hookNames []string, 
 	for _, hookName := range hookNames {
 		postHook := GetPostHook(hookName)
 		if postHook == nil {
-			// Try legacy hook for backward compatibility
 			legacyHook := GetHook(hookName)
 			if legacyHook == nil {
 				if options.Logger != nil {
@@ -47,10 +49,10 @@ func executePostHooks(ctx context.Context, toolName string, hookNames []string, 
 				}
 				continue
 			}
-			// Use legacy hook
+
 			hookCtx := HookContext{
 				ctx:       ctx,
-				OutputDir: ".",
+				OutputDir: getOutputDir(options),
 				ToolName:  toolName,
 				Options:   options,
 			}
@@ -68,10 +70,9 @@ func executePostHooks(ctx context.Context, toolName string, hookNames []string, 
 				return errors.NewToolError(toolName, fmt.Errorf("post hook %s failed: %w", hookName, err))
 			}
 		} else {
-			// Use new PostHook interface
 			hookCtx := HookContext{
 				ctx:       ctx,
-				OutputDir: ".",
+				OutputDir: getOutputDir(options),
 				ToolName:  toolName,
 				Options:   options,
 			}
@@ -103,8 +104,6 @@ func executePostHooks(ctx context.Context, toolName string, hookNames []string, 
 	return nil
 }
 
-// executeStageHooks runs system-defined hooks when ALL tools in a stage complete
-// These hooks run once per stage completion (system-controlled)
 func executeStageHooks(ctx context.Context, stage Stage, stageName string, options *Options) error {
 	hooks := GetStageHooks(stage)
 	if len(hooks) == 0 {
@@ -113,7 +112,6 @@ func executeStageHooks(ctx context.Context, stage Stage, stageName string, optio
 
 	chainLogger.Infof("Executing %d stage hooks for stage %s", len(hooks), stageName)
 
-	// Run stage hooks concurrently but wait for all to complete
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(hooks))
 
@@ -123,8 +121,8 @@ func executeStageHooks(ctx context.Context, stage Stage, stageName string, optio
 			defer wg.Done()
 			hookCtx := HookContext{
 				ctx:       ctx,
-				OutputDir: ".",
-				ToolName:  stageName, // Use stage name as tool name for stage hooks
+				OutputDir: getOutputDir(options),
+				ToolName:  stageName,
 				Options:   options,
 			}
 			if err := h.ExecuteForStage(hookCtx); err != nil {
@@ -136,7 +134,6 @@ func executeStageHooks(ctx context.Context, stage Stage, stageName string, optio
 		}(hook)
 	}
 
-	// Wait for all stage hooks to complete
 	wg.Wait()
 	close(errChan)
 

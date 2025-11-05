@@ -84,10 +84,9 @@ type ScanDirectoryOptions struct {
 	Permissions os.FileMode
 }
 
-func CreateAndChangeScanDirectory(scanType, domainName string) (string, error) {
-	os.Chdir(projectRoot)
-	return CreateAndChangeScanDirectoryWithOptions(ScanDirectoryOptions{
-		BaseDir:     "./scans",
+func CreateScanDirectory(scanType, domainName string) (string, error) {
+	return CreateScanDirectoryWithOptions(ScanDirectoryOptions{
+		BaseDir:     filepath.Join(projectRoot, "scans"),
 		ScanType:    scanType,
 		DomainName:  domainName,
 		Timestamp:   time.Now(),
@@ -95,7 +94,7 @@ func CreateAndChangeScanDirectory(scanType, domainName string) (string, error) {
 	})
 }
 
-func CreateAndChangeScanDirectoryWithOptions(opts ScanDirectoryOptions) (string, error) {
+func CreateScanDirectoryWithOptions(opts ScanDirectoryOptions) (string, error) {
 	safeDomainName := sanitizeForFilesystem(opts.DomainName)
 
 	dirName := fmt.Sprintf("%s_%s_%s",
@@ -116,12 +115,7 @@ func CreateAndChangeScanDirectoryWithOptions(opts ScanDirectoryOptions) (string,
 		return dir, fmt.Errorf("failed to get absolute path for %s: %w", dir, err)
 	}
 
-	if err := os.Chdir(absDir); err != nil {
-		utilsLogger.Errorf("Error changing to scan directory: %v", err)
-		return absDir, fmt.Errorf("failed to change directory to %s: %w", absDir, err)
-	}
-
-	utilsLogger.Infof("Created and changed to scan directory: %s", absDir)
+	utilsLogger.Infof("Created scan directory: %s", absDir)
 	return absDir, nil
 }
 

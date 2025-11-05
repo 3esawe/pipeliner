@@ -3,11 +3,19 @@ package notification
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
 
-// NotificationClient represents a Discord client.
+type Message struct {
+	Title       string
+	Description string
+	Severity    string
+	Fields      map[string]string
+	Timestamp   time.Time
+}
+
 type NotificationClient struct {
 	sg *discordgo.Session
 }
@@ -23,7 +31,6 @@ func NewNotificationClient() (*NotificationClient, error) {
 		return nil, err
 	}
 
-	// Open a websocket connection to Discord
 	if err := sg.Open(); err != nil {
 		return nil, err
 	}
@@ -31,7 +38,24 @@ func NewNotificationClient() (*NotificationClient, error) {
 	return &NotificationClient{sg: sg}, nil
 }
 
-func (c *NotificationClient) SendDomainAddedMessage(domain string) error {
+func (c *NotificationClient) getSeverityColor(severity string) int {
+	switch severity {
+	case "critical":
+		return 0x8B0000
+	case "high":
+		return 0xFF0000
+	case "medium":
+		return 0xFF8C00
+	case "low":
+		return 0xFFD700
+	case "info":
+		return 0x00BFFF
+	default:
+		return 0x808080
+	}
+}
+
+func (c *NotificationClient) Send(msg Message) error {
 	if c.sg == nil {
 		return fmt.Errorf("Discord client not initialized")
 	}
@@ -41,9 +65,30 @@ func (c *NotificationClient) SendDomainAddedMessage(domain string) error {
 		return fmt.Errorf("DISCORD_CHANNEL_ID not set")
 	}
 
-	// Create clean, simple message
-	_, err := c.sg.ChannelMessageSend(channelID, fmt.Sprintf(
-		"🚀 New domain discovered: `%s`\nSource: Security Pipeline", domain))
+	if msg.Timestamp.IsZero() {
+		msg.Timestamp = time.Now()
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title:       msg.Title,
+		Description: msg.Description,
+		Color:       c.getSeverityColor(msg.Severity),
+		Timestamp:   msg.Timestamp.Format(time.RFC3339),
+	}
+
+	if len(msg.Fields) > 0 {
+		fields := make([]*discordgo.MessageEmbedField, 0, len(msg.Fields))
+		for key, value := range msg.Fields {
+			fields = append(fields, &discordgo.MessageEmbedField{
+				Name:   key,
+				Value:  value,
+				Inline: true,
+			})
+		}
+		embed.Fields = fields
+	}
+
+	_, err := c.sg.ChannelMessageSendEmbed(channelID, embed)
 	return err
 }
 

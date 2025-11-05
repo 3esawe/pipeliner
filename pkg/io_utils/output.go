@@ -25,6 +25,10 @@ var (
 
 func WatchDirectory(ctx context.Context) {
 	path, _ := os.Getwd()
+	WatchDirectoryWithPath(ctx, path)
+}
+
+func WatchDirectoryWithPath(ctx context.Context, path string) {
 	fileLogger.WithFields(logger.Fields{"path": path}).Info("Watching directory")
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {

@@ -3,7 +3,6 @@ package engine
 import (
 	"context"
 	"fmt"
-	"os"
 	"pipeliner/internal/notification"
 	"pipeliner/internal/utils"
 	"pipeliner/pkg/errors"
@@ -108,40 +107,45 @@ func (e *PiplinerEngine) PrepareScan(options *tools.Options) error {
 			return errors.ErrInvalidConfig
 		}
 
-		dir, err := utils.CreateAndChangeScanDirectory(e.options.ScanType, e.options.Domain)
+		dir, err := utils.CreateScanDirectory(e.options.ScanType, e.options.Domain)
 		if err != nil {
 			e.logger.Error("Failed to create scan directory", logger.Fields{"error": err})
 			return fmt.Errorf("failed to create scan directory: %w", err)
 		}
 		e.scanDir = dir
+		e.options.WorkingDir = dir
 
-		go output.WatchDirectory(e.ctx)
+		go output.WatchDirectoryWithPath(e.ctx, dir)
 	}
 	return nil
 }
 
 func (e *PiplinerEngine) RunHTTP(scanType, domain string) (err error) {
 	if e.scanDir == "" {
-		dir, err := utils.CreateAndChangeScanDirectory(scanType, domain)
+		dir, err := utils.CreateScanDirectory(scanType, domain)
 		if err != nil {
-			e.logger.Error("Failed to create scan directory:", logger.Fields{"error": err})
+			e.logger.Error("Failed to create scan directory", logger.Fields{"error": err})
 			return fmt.Errorf("failed to create scan directory: %w", err)
 		}
 		e.scanDir = dir
+
+		if e.options == nil {
+			e.options = tools.DefaultOptions()
+		}
+		e.options.WorkingDir = dir
 	} else {
-		if err := os.Chdir(e.scanDir); err != nil {
-			e.logger.Error("Failed to switch to existing scan directory", logger.Fields{"error": err, "scan_dir": e.scanDir})
-			return fmt.Errorf("failed to change to scan directory: %w", err)
+		if e.options != nil {
+			e.options.WorkingDir = e.scanDir
 		}
 	}
 
-	e.logger.Info("Starting HTTP scan for", logger.Fields{"domain": domain, "module": scanType})
+	e.logger.Info("Starting HTTP scan", logger.Fields{"domain": domain, "module": scanType})
 	if err := e.runTools(); err != nil {
 		e.logger.Error("HTTP scan failed", logger.Fields{"error": err})
 		return errors.ErrToolExecutionFailed
 	}
 
-	e.logger.Info("HTTP scan completed for", logger.Fields{"domain": domain, "module": scanType})
+	e.logger.Info("HTTP scan completed", logger.Fields{"domain": domain, "module": scanType})
 	return nil
 }
 
@@ -149,7 +153,7 @@ func (e *PiplinerEngine) Run() error {
 	ticker := time.NewTicker(time.Hour * time.Duration(e.periodic))
 	defer ticker.Stop()
 
-	e.logger.Info("Running Pipeliner Engine...")
+	e.logger.Info("Starting Pipeliner Engine")
 	if err := e.runTools(); err != nil {
 		e.logger.Error("Initial tool run failed", logger.Fields{"error": err})
 		return errors.ErrToolExecutionFailed
@@ -158,12 +162,12 @@ func (e *PiplinerEngine) Run() error {
 	for {
 		select {
 		case <-e.ctx.Done():
-			e.logger.Info("Stopping Pipeliner Engine...")
+			e.logger.Info("Stopping Pipeliner Engine")
 			return nil
 		case <-ticker.C:
-			e.logger.Info("Running Periodic Pipeliner")
+			e.logger.Info("Running periodic pipeline")
 			if err := e.runTools(); err != nil {
-				e.logger.Error("Pipeline Engine stopped due to error or context being cancelled", logger.Fields{"error": err})
+				e.logger.Error("Periodic pipeline failed", logger.Fields{"error": err})
 				return errors.ErrToolExecutionFailed
 			}
 		}
@@ -185,7 +189,7 @@ func (e *PiplinerEngine) runTools() error {
 	toolInstances, err := e.createToolInstances(chainConfig.Tools)
 	if err != nil {
 		e.logger.Error("Failed to create tool instances", logger.Fields{"error": err})
-		return err // This already returns a custom error
+		return err
 	}
 
 	var strategy tools.ExecutionStrategy
@@ -206,7 +210,6 @@ func (e *PiplinerEngine) runTools() error {
 		return err
 	}
 
-	e.logger.Info("Waiting for periodic scan to run")
 	return nil
 }
 

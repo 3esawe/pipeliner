@@ -40,7 +40,7 @@ func (dao *scanDAO) GetScanByUUID(uuid string) (*models.Scan, error) {
 
 func (dao *scanDAO) ListScans() ([]models.Scan, error) {
 	var scans []models.Scan
-	if err := dao.db.Find(&scans).Error; err != nil {
+	if err := dao.db.Order("created_at desc").Limit(50).Find(&scans).Error; err != nil {
 		return nil, err
 	}
 	return scans, nil

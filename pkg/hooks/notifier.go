@@ -23,7 +23,6 @@ type NotifierHook struct {
 	logger *logger.Logger
 }
 
-// NewNotifierHook creates a new NotifierHook instance
 func NewNotifierHook(config NotifierHookConfig) *NotifierHook {
 	return &NotifierHook{
 		Config: config,
@@ -39,23 +38,19 @@ func (n *NotifierHook) Description() string {
 	return "Sends Discord notifications for each line in the specified output file (useful for vulnerability alerts)"
 }
 
-// Execute implements PostHook interface - can be used in YAML configurations
 func (n *NotifierHook) Execute(ctx tools.HookContext) error {
 	return n.executeNotification(ctx)
 }
 
-// ExecuteForStage implements StageHook interface - can be used for stage completion
 func (n *NotifierHook) ExecuteForStage(ctx tools.HookContext) error {
 	return n.executeNotification(ctx)
 }
 
-// PostHook implements legacy Hook interface for backward compatibility
 func (n *NotifierHook) PostHook(ctx tools.HookContext) error {
 	return n.executeNotification(ctx)
 }
 
 func (n *NotifierHook) executeNotification(ctx tools.HookContext) error {
-
 	filename := n.Config.Filename
 	file, err := os.Open(filename)
 	if err != nil {
@@ -84,7 +79,15 @@ func (n *NotifierHook) executeNotification(ctx tools.HookContext) error {
 		go func() {
 			defer wg.Done()
 			for line := range lines {
-				if err := discord.SendDomainAddedMessage(line); err != nil {
+				msg := notification.Message{
+					Title:       "New Finding",
+					Description: line,
+					Severity:    "info",
+					Fields: map[string]string{
+						"Source": filename,
+					},
+				}
+				if err := discord.Send(msg); err != nil {
 					n.logger.WithFields(logger.Fields{
 						"line":  line,
 						"error": err,
@@ -97,12 +100,9 @@ func (n *NotifierHook) executeNotification(ctx tools.HookContext) error {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		data := strings.TrimSpace(scanner.Text())
-		if data == "" {
-			continue // Skip empty lines and comments
-		} else {
+		if data != "" {
 			lines <- data
 		}
-
 	}
 
 	close(lines)

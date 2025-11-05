@@ -3,8 +3,9 @@ package handlers
 import "pipeliner/pkg/tools"
 
 type ScanRequest struct {
-	ScanType string `json:"scan_type"  binding:"required"`
-	Domain   string `json:"domain" binding:"required"`
+	ScanType          string `json:"scan_type" binding:"required"`
+	Domain            string `json:"domain" binding:"required"`
+	SensitivePatterns string `json:"sensitive_patterns"`
 }
 
 type ScanResponse struct {

@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"pipeliner/pkg/logger"
 	"strings"
 	"time"
@@ -10,9 +11,24 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type contextKey string
+
+const workingDirKey contextKey = "working_dir"
+
+func withWorkingDir(ctx context.Context, dir string) context.Context {
+	return context.WithValue(ctx, workingDirKey, dir)
+}
+
+func GetWorkingDirFromContext(ctx context.Context) string {
+	if dir, ok := ctx.Value(workingDirKey).(string); ok {
+		return dir
+	}
+	return ""
+}
+
 type ProgressEvent struct {
 	Tool      string
-	Status    string // "started", "running", "completed", "failed"
+	Status    string
 	Message   string
 	Timestamp time.Time
 	ack       chan struct{}
@@ -35,7 +51,7 @@ func NewConfigurableTool(name string, tool_type string, config ToolConfig, runne
 		config:       config,
 		runner:       runner,
 		progress:     make(chan ProgressEvent, 500),
-		toolRegistry: nil, // Will be set later if needed
+		toolRegistry: nil,
 		logger:       logger.NewLogger(logrus.InfoLevel),
 	}
 }
@@ -52,7 +68,6 @@ func NewConfigurableToolWithLogger(name string, tool_type string, config ToolCon
 	}
 }
 
-// NewConfigurableToolWithRegistry creates a tool with access to the tool registry
 func NewConfigurableToolWithRegistry(name string, tool_type string, config ToolConfig, runner CommandRunner, registry ToolRegistry) Tool {
 	return &ConfigurableTool{
 		name:         name,
@@ -65,7 +80,6 @@ func NewConfigurableToolWithRegistry(name string, tool_type string, config ToolC
 	}
 }
 
-// NewConfigurableToolWithRegistryAndLogger creates a tool with registry and logger
 func NewConfigurableToolWithRegistryAndLogger(name string, tool_type string, config ToolConfig, runner CommandRunner, registry ToolRegistry, lgr *logger.Logger) Tool {
 	return &ConfigurableTool{
 		name:         name,
@@ -78,7 +92,6 @@ func NewConfigurableToolWithRegistryAndLogger(name string, tool_type string, con
 	}
 }
 
-// SetToolRegistry sets the tool registry for dynamic configuration resolution
 func (t *ConfigurableTool) SetToolRegistry(registry ToolRegistry) {
 	t.toolRegistry = registry
 }
@@ -99,6 +112,10 @@ func (t *ConfigurableTool) Run(ctx context.Context, options *Options) error {
 	done := make(chan bool, 1)
 	eventAck := make(chan struct{})
 	go t.monitorProgress(ctx, done)
+
+	if options != nil && options.WorkingDir != "" && options.WorkingDir != "." {
+		ctx = withWorkingDir(ctx, options.WorkingDir)
+	}
 
 	t.sendProgress(ProgressEvent{
 		Tool:      t.name,
@@ -136,12 +153,9 @@ func (t *ConfigurableTool) Run(ctx context.Context, options *Options) error {
 	return err
 }
 
-// runWithReplacement executes the tool with replacement logic
 func (t *ConfigurableTool) runWithReplacement(ctx context.Context, args []string, options *Options) error {
-	// Determine the replacement file
 	replaceFromFile := t.config.ReplaceFrom
 	if replaceFromFile == "" && len(t.config.DependsOn) > 0 {
-		// Use the output of the first dependency as default
 		replaceFromFile = t.inferReplacementFile(t.config.DependsOn[0])
 	}
 
@@ -149,7 +163,10 @@ func (t *ConfigurableTool) runWithReplacement(ctx context.Context, args []string
 		return fmt.Errorf("no replacement file specified for tool %s with replace token %s", t.name, t.config.Replace)
 	}
 
-	// Check if runner supports replacement
+	if !filepath.IsAbs(replaceFromFile) && options != nil && options.WorkingDir != "" {
+		replaceFromFile = filepath.Join(options.WorkingDir, replaceFromFile)
+	}
+
 	if replacementRunner, ok := t.runner.(ReplacementCommandRunner); ok {
 		t.logger.WithTool(t.name, t.tool_type).Infof("Executing replacement command: %s with token %s from file %s", t.config.Command, t.config.Replace, replaceFromFile)
 		return replacementRunner.RunWithReplacement(ctx, t.config.Command, args, t.config.Replace, replaceFromFile)
@@ -158,52 +175,41 @@ func (t *ConfigurableTool) runWithReplacement(ctx context.Context, args []string
 	return fmt.Errorf("runner does not support replacement for tool %s", t.name)
 }
 
-// inferReplacementFile dynamically determines the output file of a dependency tool
 func (t *ConfigurableTool) inferReplacementFile(dependencyName string) string {
-	// If we have access to the tool registry, use the actual configuration
 	if t.toolRegistry != nil {
 		if depConfig, exists := t.toolRegistry.GetToolConfig(dependencyName); exists {
 			return t.extractOutputFileFromConfig(depConfig)
 		}
 	}
 
-	// Fallback to default pattern if no registry or tool not found
 	t.logger.WithTool(t.name, t.tool_type).Warnf("Could not find dependency tool configuration for %s, using default pattern", dependencyName)
 	return fmt.Sprintf("%s_output.txt", dependencyName)
 }
 
-// extractOutputFileFromConfig extracts the output filename from a tool's configuration
 func (t *ConfigurableTool) extractOutputFileFromConfig(config *ToolConfig) string {
-	// Look for output flags in the tool configuration
 	for _, flag := range config.Flags {
 		if t.isOutputFlag(flag) {
 			return flag.Default
 		}
 	}
 
-	// If no explicit output flag found, use default pattern
 	return fmt.Sprintf("%s_output.txt", config.Name)
 }
 
-// ExtractOutputFileFromConfig is a public wrapper for testing
 func (t *ConfigurableTool) ExtractOutputFileFromConfig(config *ToolConfig) string {
 	return t.extractOutputFileFromConfig(config)
 }
 
-// isOutputFlag determines if a flag represents an output file specification
 func (t *ConfigurableTool) isOutputFlag(flag FlagConfig) bool {
-	// Common output flag patterns
 	outputFlags := []string{"-o", "--output", "-output", "--out", "-out"}
 	outputOptions := []string{"Output", "OutputFile", "Out", "output", "outputfile", "out"}
 
-	// Check if flag matches common output flag patterns
 	for _, outputFlag := range outputFlags {
 		if flag.Flag == outputFlag {
 			return true
 		}
 	}
 
-	// Check if option name suggests it's an output parameter
 	for _, outputOption := range outputOptions {
 		if flag.Option == outputOption {
 			return true

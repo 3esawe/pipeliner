@@ -4,6 +4,7 @@ import (
 	"errors"
 	"pipeliner/internal/models"
 	"pipeliner/internal/services"
+	"pipeliner/pkg/engine"
 	"pipeliner/pkg/logger"
 
 	"github.com/gin-gonic/gin"
@@ -31,6 +32,7 @@ func (h *ScanHandler) StartScan(c *gin.Context) {
 
 	scanModel.ScanType = ScanRequest.ScanType
 	scanModel.Domain = ScanRequest.Domain
+	scanModel.SensitivePatterns = ScanRequest.SensitivePatterns
 	h.logger.Info("Starting scan", logger.Fields{"scanType": scanModel.ScanType, "domain": scanModel.Domain})
 	id, err := h.scanService.StartScan(&scanModel)
 	if err != nil {
@@ -92,4 +94,16 @@ func (h *ScanHandler) DeleteScan(c *gin.Context) {
 	}
 
 	c.Status(204)
+}
+
+func (h *ScanHandler) GetQueueStatus(c *gin.Context) {
+	queue := engine.GetGlobalQueue()
+	running, queued, maxConcurrent := queue.GetStatus()
+
+	c.JSON(200, gin.H{
+		"running":        running,
+		"queued":         queued,
+		"max_concurrent": maxConcurrent,
+		"available":      maxConcurrent - running,
+	})
 }

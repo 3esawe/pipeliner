@@ -66,7 +66,6 @@ type ToolConfig struct {
 	PostHooks   []string      `yaml:"posthooks,omitempty" mapstructure:"posthooks"`
 }
 
-// Validate checks if the tool configuration is valid
 func (tc *ToolConfig) Validate() error {
 	if tc.Name == "" {
 		return fmt.Errorf("tool name is required")
@@ -78,7 +77,6 @@ func (tc *ToolConfig) Validate() error {
 		return fmt.Errorf("retries must be non-negative for tool %s", tc.Name)
 	}
 
-	// Validate flag configurations
 	for i, flag := range tc.Flags {
 		if err := flag.Validate(); err != nil {
 			return fmt.Errorf("invalid flag config at index %d for tool %s: %w", i, tc.Name, err)
@@ -88,7 +86,6 @@ func (tc *ToolConfig) Validate() error {
 	return nil
 }
 
-// Validate checks if the flag configuration is valid
 func (fc *FlagConfig) Validate() error {
 	if fc.Flag == "" && !fc.IsPositional {
 		return fmt.Errorf("flag is required when not positional")
@@ -104,7 +101,6 @@ type ChainConfig struct {
 	GlobalTimeout time.Duration `yaml:"global_timeout,omitempty" mapstructure:"global_timeout"`
 }
 
-// Validate checks if the chain configuration is valid
 func (cc *ChainConfig) Validate() error {
 	if len(cc.Tools) == 0 {
 		return fmt.Errorf("at least one tool is required")
@@ -120,29 +116,18 @@ func (cc *ChainConfig) Validate() error {
 		return fmt.Errorf("invalid execution mode: %s", cc.ExecutionMode)
 	}
 
-	// Validate each tool
 	toolNames := make(map[string]bool)
 	for i, tool := range cc.Tools {
 		if err := tool.Validate(); err != nil {
 			return fmt.Errorf("invalid tool config at index %d: %w", i, err)
 		}
 
-		// Check for duplicate tool names
 		if toolNames[tool.Name] {
 			return fmt.Errorf("duplicate tool name: %s", tool.Name)
 		}
 		toolNames[tool.Name] = true
-
-		// Validate dependencies exist
-		for _, dep := range tool.DependsOn {
-			if !toolNames[dep] {
-				// This is a forward dependency - we'll need to check it exists later
-				// For now, we'll allow it and validate in a second pass
-			}
-		}
 	}
 
-	// Second pass: validate all dependencies exist
 	for _, tool := range cc.Tools {
 		for _, dep := range tool.DependsOn {
 			if !toolNames[dep] {
@@ -163,9 +148,7 @@ func (tc *ToolConfig) BuildArgs(options interface{}) ([]string, error) {
 	}
 
 	for _, flag := range tc.Flags {
-		// Handle positional arguments
 		if flag.IsPositional {
-			// Validate positional argument
 			if err := validateArgument(flag.Flag); err != nil {
 				return nil, fmt.Errorf("invalid positional argument %s: %w", flag.Flag, err)
 			}
@@ -173,16 +156,13 @@ func (tc *ToolConfig) BuildArgs(options interface{}) ([]string, error) {
 			continue
 		}
 
-		// Skip flags with empty option names (pure flags)
 		if flag.Option == "" {
 			if flag.Flag != "" {
-				// Validate the flag itself
 				if err := validateFlag(flag.Flag); err != nil {
 					return nil, fmt.Errorf("invalid flag %s: %w", flag.Flag, err)
 				}
 
 				if flag.Default != "" {
-					// Validate default value
 					if err := validateArgument(flag.Default); err != nil {
 						return nil, fmt.Errorf("invalid default value for %s: %w", flag.Flag, err)
 					}
@@ -197,7 +177,6 @@ func (tc *ToolConfig) BuildArgs(options interface{}) ([]string, error) {
 		fieldValue := optionsValue.FieldByName(flag.Option)
 		if !fieldValue.IsValid() {
 			if flag.Default != "" {
-				// Validate flag and default
 				if err := validateFlag(flag.Flag); err != nil {
 					return nil, fmt.Errorf("invalid flag %s: %w", flag.Flag, err)
 				}
@@ -216,7 +195,6 @@ func (tc *ToolConfig) BuildArgs(options interface{}) ([]string, error) {
 
 		if flag.IsBoolean {
 			if value == "true" {
-				// Validate flag
 				if err := validateFlag(flag.Flag); err != nil {
 					return nil, fmt.Errorf("invalid boolean flag %s: %w", flag.Flag, err)
 				}
@@ -234,7 +212,6 @@ func (tc *ToolConfig) BuildArgs(options interface{}) ([]string, error) {
 		}
 
 		if value != "" {
-			// Validate both flag and value
 			if err := validateFlag(flag.Flag); err != nil {
 				return nil, fmt.Errorf("invalid flag %s: %w", flag.Flag, err)
 			}
@@ -247,18 +224,15 @@ func (tc *ToolConfig) BuildArgs(options interface{}) ([]string, error) {
 	return args, nil
 }
 
-// validateFlag validates that a flag name is safe
 func validateFlag(flag string) error {
 	if flag == "" {
 		return fmt.Errorf("flag is empty")
 	}
 
-	// Flags should start with - or --
 	if !strings.HasPrefix(flag, "-") {
 		return fmt.Errorf("flag must start with - or --")
 	}
 
-	// Check for shell metacharacters
 	dangerous := []string{";", "&", "|", "`", "$", "(", ")", "\n", "\r", "\\", "<", ">", " "}
 	for _, char := range dangerous {
 		if strings.Contains(flag, char) {
@@ -269,13 +243,11 @@ func validateFlag(flag string) error {
 	return nil
 }
 
-// validateArgument validates that a command argument value is safe
 func validateArgument(arg string) error {
 	if arg == "" {
-		return nil // Empty arguments are allowed
+		return nil
 	}
 
-	// Check for shell metacharacters that could enable command injection
 	dangerous := []string{";", "&", "|", "`", "$", "(", ")", "\n", "\r", "\\"}
 	for _, char := range dangerous {
 		if strings.Contains(arg, char) {
@@ -283,14 +255,11 @@ func validateArgument(arg string) error {
 		}
 	}
 
-	// Check for command substitution patterns
 	if strings.Contains(arg, "$(") || strings.Contains(arg, "${") {
 		return fmt.Errorf("command substitution detected in argument")
 	}
 
-	// Check for path traversal in non-URL arguments
 	if strings.Contains(arg, "..") {
-		// Allow .. in URLs but not in file paths
 		if !strings.Contains(arg, "://") {
 			return fmt.Errorf("path traversal detected in argument")
 		}

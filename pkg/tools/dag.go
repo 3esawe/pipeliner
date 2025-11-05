@@ -5,40 +5,6 @@ import (
 	"fmt"
 )
 
-/*
-DAG Structure:
-  subfinder ─┐
-             │
-  findomain ─┼──► httpxbb ─┬──► gowitness
-             │             │
-chaos-client ─┘             └──► nuclei
-
-Execution Levels:
-Level 1 (Parallel):
-+---------------+   +---------------+   +---------------+
-|  subfinder   |   |  findomain   |   | chaos-client |
-+---------------+   +---------------+   +---------------+
-          │                 │                 │
-          └───────┬─────────┼─────────┬───────┘
-                  │         │         │
-                  ▼         ▼         ▼
-             [Combine Subdomain Files]
-                         │
-                         ▼
-Level 2 (Single):
-+---------------+
-|   httpxbb    |
-+---------------+
-          │
-          └───────┬─────────┬───────┐
-                  │         │       │
-                  ▼         ▼       ▼
-Level 3 (Parallel):
-+---------------+          +---------------+
-|  gowitness   |          |    nuclei     |
-+---------------+          +---------------+
-*/
-
 type depGraph struct {
 	nodes       map[string]Tool
 	children    map[string][]string
@@ -121,14 +87,7 @@ func (g *depGraph) initialReady() []Tool {
 	return ready
 }
 
-// onComplete updates children after 'name' completes.
-// Returns:
-//   - newReady: tools that became ready to run
-//   - skipped: tools that are now terminally skipped (due to a failed ancestor)
-//
-// This function also recursively propagates skips down the graph.
 func (g *depGraph) onComplete(name string, success bool) (newReady []Tool, skipped []string) {
-	// Update direct children first
 	queue := make([]string, 0)
 	for _, child := range g.children[name] {
 		g.remaining[child]--
@@ -136,18 +95,15 @@ func (g *depGraph) onComplete(name string, success bool) (newReady []Tool, skipp
 			g.failedDeps[child]++
 		}
 
-		// If child has no remaining deps
 		if g.remaining[child] == 0 {
 			if g.failedDeps[child] == 0 {
 				newReady = append(newReady, g.nodes[child])
 			} else {
-				// child is skipped; propagate failure as if it failed
 				queue = append(queue, child)
 			}
 		}
 	}
 
-	// Propagate skips breadth-first
 	for len(queue) > 0 {
 		cur := queue[0]
 		queue = queue[1:]
@@ -155,7 +111,7 @@ func (g *depGraph) onComplete(name string, success bool) (newReady []Tool, skipp
 
 		for _, gc := range g.children[cur] {
 			g.remaining[gc]--
-			g.failedDeps[gc]++ // skipped parent counts as failed prerequisite
+			g.failedDeps[gc]++
 			if g.remaining[gc] == 0 {
 				if g.failedDeps[gc] == 0 {
 					newReady = append(newReady, g.nodes[gc])

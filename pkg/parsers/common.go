@@ -51,8 +51,8 @@ func (p *NmapParser) parseNmapOutput(outputFile string) (map[string]any, error) 
 
 	var nmapResult NmapRun
 	if err := xml.Unmarshal(data, &nmapResult); err != nil {
-		p.logger.Errorf("Failed to parse Nmap XML output: %v", err)
-		return nil, fmt.Errorf("failed to parse nmap XML output: %w", err)
+		p.logger.Warnf("Nmap XML parsing failed - scan may still be running or incomplete: %v", err)
+		return nil, fmt.Errorf("nmap scan not ready or incomplete (XML parse error: %w). This is normal if the scan is still running", err)
 	}
 
 	result := make(map[string]any)

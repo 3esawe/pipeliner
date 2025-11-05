@@ -197,6 +197,26 @@ templ StartScan(configs []tools.ChainConfig) {
 								<p class="mt-2 text-sm text-gray-500">Accepted formats include apex domains or subdomains (e.g., <span class="font-mono">example.com</span>, <span class="font-mono">api.example.com</span>).</p>
 							</div>
 							<div>
+								<div class="flex items-center justify-between mb-2">
+									<label class="block text-sm font-medium text-gray-700">Sensitive patterns (optional)</label>
+									<button
+										type="button"
+										onclick="document.getElementById('patterns-modal').classList.remove('hidden')"
+										class="text-sm text-blue-600 hover:text-blue-800"
+									>
+										Add patterns
+									</button>
+								</div>
+								<textarea
+									name="sensitive_patterns"
+									id="sensitive_patterns"
+									rows="3"
+									placeholder="One regex pattern per line (e.g., /admin.*)"
+									class="w-full rounded-md border border-gray-300 px-4 py-2 text-gray-900 text-sm font-mono focus:border-blue-500 focus:ring focus:ring-blue-200"
+								></textarea>
+								<p class="mt-1 text-xs text-gray-500">Custom regex patterns to detect sensitive endpoints during fuzzing</p>
+							</div>
+							<div>
 								<h2 class="text-sm font-medium text-gray-700 mb-3">Choose a configuration</h2>
 								<div class="space-y-3">
 									for _, config := range configs {
@@ -246,7 +266,79 @@ templ StartScan(configs []tools.ChainConfig) {
 				}
 			</div>
 		</div>
+		<div id="patterns-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+			<div class="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
+				<div class="flex justify-between items-center mb-4">
+					<h3 class="text-lg font-semibold text-gray-900">Sensitive Pattern Examples</h3>
+					<button
+						type="button"
+						onclick="document.getElementById('patterns-modal').classList.add('hidden')"
+						class="text-gray-400 hover:text-gray-600"
+					>
+						<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+						</svg>
+					</button>
+				</div>
+				<div class="mb-4">
+					<p class="text-sm text-gray-600 mb-3">Click any pattern to add it to your scan configuration:</p>
+					<div class="space-y-2 max-h-96 overflow-y-auto">
+						<button type="button" onclick="addPattern('/actuator.*')" class="w-full text-left px-3 py-2 text-sm border rounded hover:bg-blue-50">
+							<span class="font-mono text-blue-600">/actuator.*</span>
+							<span class="text-gray-600 ml-2">- Spring Boot actuators</span>
+						</button>
+						<button type="button" onclick="addPattern('\\.env$')" class="w-full text-left px-3 py-2 text-sm border rounded hover:bg-blue-50">
+							<span class="font-mono text-blue-600">\\.env$</span>
+							<span class="text-gray-600 ml-2">- Environment files</span>
+						</button>
+						<button type="button" onclick="addPattern('\\.git/')" class="w-full text-left px-3 py-2 text-sm border rounded hover:bg-blue-50">
+							<span class="font-mono text-blue-600">\\.git/</span>
+							<span class="text-gray-600 ml-2">- Git repositories</span>
+						</button>
+						<button type="button" onclick="addPattern('/admin.*')" class="w-full text-left px-3 py-2 text-sm border rounded hover:bg-blue-50">
+							<span class="font-mono text-blue-600">/admin.*</span>
+							<span class="text-gray-600 ml-2">- Admin panels</span>
+						</button>
+						<button type="button" onclick="addPattern('/backup.*')" class="w-full text-left px-3 py-2 text-sm border rounded hover:bg-blue-50">
+							<span class="font-mono text-blue-600">/backup.*</span>
+							<span class="text-gray-600 ml-2">- Backup files</span>
+						</button>
+						<button type="button" onclick="addPattern('/\\..*')" class="w-full text-left px-3 py-2 text-sm border rounded hover:bg-blue-50">
+							<span class="font-mono text-blue-600">/\\..*</span>
+							<span class="text-gray-600 ml-2">- Hidden files</span>
+						</button>
+						<button type="button" onclick="addPattern('/swagger.*')" class="w-full text-left px-3 py-2 text-sm border rounded hover:bg-blue-50">
+							<span class="font-mono text-blue-600">/swagger.*</span>
+							<span class="text-gray-600 ml-2">- API documentation</span>
+						</button>
+						<button type="button" onclick="addPattern('/api/v[0-9]+/debug')" class="w-full text-left px-3 py-2 text-sm border rounded hover:bg-blue-50">
+							<span class="font-mono text-blue-600">/api/v[0-9]+/debug</span>
+							<span class="text-gray-600 ml-2">- Debug endpoints</span>
+						</button>
+					</div>
+				</div>
+				<div class="flex justify-end">
+					<button
+						type="button"
+						onclick="document.getElementById('patterns-modal').classList.add('hidden')"
+						class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+					>
+						Done
+					</button>
+				</div>
+			</div>
+		</div>
 		<script>
+			function addPattern(pattern) {
+				const textarea = document.getElementById('sensitive_patterns');
+				const current = textarea.value.trim();
+				const lines = current ? current.split('\n') : [];
+				if (!lines.includes(pattern)) {
+					lines.push(pattern);
+					textarea.value = lines.join('\n');
+				}
+			}
+
 			function prepareStartScanRequest(event) {
 				const form = document.getElementById('start-scan-form');
 				if (form) {

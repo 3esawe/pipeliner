@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"pipeliner/internal/dao"
 	"pipeliner/internal/models"
+	"pipeliner/internal/notification"
 	"pipeliner/pkg/engine"
 	"pipeliner/pkg/logger"
 	"pipeliner/pkg/parsers"
@@ -32,18 +33,25 @@ type ScanServiceMethods interface {
 }
 
 type scanService struct {
-	scanDao     dao.ScanDAO
-	logger      *logger.Logger
-	scanMutexes sync.Map
+	scanDao            dao.ScanDAO
+	logger             *logger.Logger
+	scanMutexes        sync.Map
+	notificationClient *notification.NotificationClient
 }
 
 var ErrScanNotFound = errors.New("scan not found")
 
 func NewScanService(scanDao dao.ScanDAO) ScanServiceMethods {
+	notifClient, err := notification.NewNotificationClient()
+	if err != nil {
+		logger.NewLogger(logrus.InfoLevel).WithError(err).Warn("Failed to initialize notification client - notifications disabled")
+	}
+
 	return &scanService{
-		scanDao:     scanDao,
-		logger:      logger.NewLogger(logrus.InfoLevel),
-		scanMutexes: sync.Map{},
+		scanDao:            scanDao,
+		logger:             logger.NewLogger(logrus.InfoLevel),
+		scanMutexes:        sync.Map{},
+		notificationClient: notifClient,
 	}
 }
 
@@ -55,70 +63,93 @@ func (s *scanService) getScanMutex(scanID string) *sync.Mutex {
 func (s *scanService) StartScan(scan *models.Scan) (string, error) {
 	id := uuid.New().String()
 	scan.UUID = id
-	scan.Status = "started"
-
-	e, err := engine.NewPiplinerEngine()
-	if err != nil {
-		s.logger.Error("Failed to create engine", logger.Fields{"error": err})
-		return "", err
-	}
-
-	if err := e.PrepareScan(&tools.Options{
-		ScanType: scan.ScanType,
-		Domain:   scan.Domain,
-	}); err != nil {
-		s.logger.Error("PrepareScan failed", logger.Fields{"error": err})
-		return "", err
-	}
+	scan.Status = "queued"
 
 	if err := s.scanDao.SaveScan(scan); err != nil {
 		s.logger.Error("SaveScan failed", logger.Fields{"error": err})
 		return "", err
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	scanDir := e.ScanDirectory()
+	go s.executeScan(id, scan.ScanType, scan.Domain)
 
-	var monitoringDone chan struct{}
-	if scanDir != "" {
-		monitoringDone = make(chan struct{})
-		go s.monitorScanProgress(scan.UUID, scan.ScanType, scanDir, ctx, monitoringDone)
-	} else {
-		s.logger.Warn("Scan directory not available for monitoring", logger.Fields{"scan_id": id})
-	}
+	return id, nil
+}
 
-	go func(scanID, scanType, domain string) {
-		defer func() {
-			if r := recover(); r != nil {
-				s.logger.Error("panic in background scan", logger.Fields{"scan_id": scanID, "panic": r})
-			}
-		}()
+func (s *scanService) executeScan(scanID, scanType, domain string) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("panic in background scan", logger.Fields{"scan_id": scanID, "panic": r})
+			s.markScanFailed(scanID)
+		}
+	}()
+
+	queue := engine.GetGlobalQueue()
+	err := queue.ExecuteWithQueue(func() error {
+		if err := s.updateScanStatus(scanID, "running"); err != nil {
+			s.logger.Error("Failed to update scan to running", logger.Fields{"scan_id": scanID, "error": err})
+		}
+
+		s.logger.Info("Starting scan execution", logger.Fields{"scan_id": scanID, "scan_type": scanType, "domain": domain})
+
+		e, err := engine.NewPiplinerEngine()
+		if err != nil {
+			s.logger.Error("Failed to create engine", logger.Fields{"error": err, "scan_id": scanID})
+			return err
+		}
+
+		if err := e.PrepareScan(&tools.Options{
+			ScanType: scanType,
+			Domain:   domain,
+		}); err != nil {
+			s.logger.Error("PrepareScan failed", logger.Fields{"error": err, "scan_id": scanID})
+			return err
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		scanDir := e.ScanDirectory()
+
+		var monitoringDone chan struct{}
+		if scanDir != "" {
+			monitoringDone = make(chan struct{})
+			go s.monitorScanProgress(scanID, scanType, scanDir, ctx, monitoringDone)
+		} else {
+			s.logger.Warn("Scan directory not available for monitoring", logger.Fields{"scan_id": scanID})
+		}
 
 		runErr := e.RunHTTP(scanType, domain)
 
-		// Signal monitors to stop
 		cancel()
 
-		// Wait for monitors to finish their final updates
 		if monitoringDone != nil {
 			s.logger.Info("Waiting for monitors to complete final processing", logger.Fields{"scan_id": scanID})
 			<-monitoringDone
 			s.logger.Info("Monitors completed, finalizing scan status", logger.Fields{"scan_id": scanID})
 		}
 
-		if runErr != nil {
-			s.logger.Error("RunHTTP failed", logger.Fields{"scan_id": scanID, "error": runErr})
-			s.markScanFailed(scanID)
-			return
-		}
+		return runErr
+	})
 
-		s.logger.Info("Scan completed successfully", logger.Fields{"scan_id": scanID})
-		if err := s.markScanCompleted(scanID); err != nil {
-			s.logger.Error("Failed to finalize scan", logger.Fields{"scan_id": scanID, "error": err})
-		}
-	}(id, scan.ScanType, scan.Domain)
+	if err != nil {
+		s.logger.Error("Scan execution failed", logger.Fields{"scan_id": scanID, "error": err})
+		s.markScanFailed(scanID)
+		return
+	}
 
-	return id, nil
+	s.logger.Info("Scan completed successfully", logger.Fields{"scan_id": scanID})
+	if err := s.markScanCompleted(scanID); err != nil {
+		s.logger.Error("Failed to finalize scan", logger.Fields{"scan_id": scanID, "error": err})
+	}
+}
+
+func (s *scanService) updateScanStatus(scanID, status string) error {
+	scan, err := s.scanDao.GetScanByUUID(scanID)
+	if err != nil {
+		return err
+	}
+	scan.Status = status
+	return s.scanDao.UpdateScan(scan)
 }
 
 func (s *scanService) GetScanByUUID(id string) (*models.Scan, error) {
@@ -582,18 +613,34 @@ func (s *scanService) saveArtifactPaths(scan *models.Scan, scanDir string) error
 
 		if results, ok := result["results"].([]parsers.FuffResult); ok {
 			filename := filepath.Base(ffufPath)
+			s.logger.Info("Successfully parsed ffuf output", logger.Fields{
+				"file":          filename,
+				"total_results": len(results),
+			})
+
+			var patternsFile string
+			if scan.SensitivePatterns != "" {
+				tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("patterns_%s.txt", scan.UUID))
+				if err := os.WriteFile(tmpFile, []byte(scan.SensitivePatterns), 0644); err != nil {
+					s.logger.WithError(err).Warn("Failed to write temp patterns file")
+				} else {
+					patternsFile = tmpFile
+					defer os.Remove(tmpFile)
+				}
+			}
 
 			for i := range scan.Subdomains {
 				domainClean := strings.Replace(scan.Subdomains[i].Domain, "://", ".", -1)
 				domainClean = strings.Replace(domainClean, "https.", "", -1)
 				domainClean = strings.Replace(domainClean, "http.", "", -1)
 
-				if strings.Contains(filename, domainClean) || strings.Contains(filename, scan.Subdomains[i].Domain) {
-					// Add discovered paths/URLs to DirFuzzing
+				if strings.HasPrefix(filename, domainClean+"_") {
+					addedCount := 0
+					sensitiveCount := 0
 					for _, r := range results {
 						if r.Status >= 200 && r.Status < 400 {
 							pathInfo := fmt.Sprintf("%s [%d]", r.URL, r.Status)
-							// Check if not already present
+
 							found := false
 							for _, existing := range scan.Subdomains[i].DirFuzzing {
 								if existing == pathInfo {
@@ -603,13 +650,46 @@ func (s *scanService) saveArtifactPaths(scan *models.Scan, scanDir string) error
 							}
 							if !found {
 								scan.Subdomains[i].DirFuzzing = append(scan.Subdomains[i].DirFuzzing, pathInfo)
+								addedCount++
+
+								if sensitivePattern, found := parsers.DetectSensitivePattern(r.URL, patternsFile); found {
+									sensitiveCount++
+									s.logger.Warn("Sensitive endpoint detected!", logger.Fields{
+										"url":         r.URL,
+										"status":      r.Status,
+										"severity":    sensitivePattern.Severity,
+										"description": sensitivePattern.Description,
+										"category":    sensitivePattern.Category,
+									})
+
+									if s.notificationClient != nil {
+										emoji := parsers.GetSeverityEmoji(sensitivePattern.Severity)
+										msg := notification.Message{
+											Title:       fmt.Sprintf("%s Sensitive Endpoint Found!", emoji),
+											Description: fmt.Sprintf("**%s**\n`%s` [%d]", sensitivePattern.Description, r.URL, r.Status),
+											Severity:    sensitivePattern.Severity,
+											Fields: map[string]string{
+												"Category": sensitivePattern.Category,
+												"Pattern":  sensitivePattern.Pattern,
+												"Domain":   scan.Subdomains[i].Domain,
+												"Status":   fmt.Sprintf("%d", r.Status),
+											},
+										}
+										if err := s.notificationClient.Send(msg); err != nil {
+											s.logger.WithError(err).Error("Failed to send sensitive finding notification")
+										}
+									}
+								}
 							}
 						}
 					}
 					s.logger.Info("Added ffuf results to subdomain", logger.Fields{
 						"subdomain": scan.Subdomains[i].Domain,
-						"count":     len(results),
+						"added":     addedCount,
+						"sensitive": sensitiveCount,
+						"total":     len(scan.Subdomains[i].DirFuzzing),
 					})
+					break // Only match one subdomain per file
 				}
 			}
 		}
