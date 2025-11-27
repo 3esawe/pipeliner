@@ -10,6 +10,7 @@ type ScanDAO interface {
 	SaveScan(scan *models.Scan) error
 	GetScanByUUID(uuid string) (*models.Scan, error)
 	ListScans() ([]models.Scan, error)
+	ListScansWithPagination(page, limit int) ([]models.Scan, int64, error)
 	UpdateScan(scan *models.Scan) error
 	DeleteScan(uuid string) error
 }
@@ -44,6 +45,36 @@ func (dao *scanDAO) ListScans() ([]models.Scan, error) {
 		return nil, err
 	}
 	return scans, nil
+}
+
+func (dao *scanDAO) ListScansWithPagination(page, limit int) ([]models.Scan, int64, error) {
+	var scans []models.Scan
+	var total int64
+
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 10
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	offset := (page - 1) * limit
+
+	if err := dao.db.Model(&models.Scan{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	if err := dao.db.Order("created_at desc").
+		Limit(limit).
+		Offset(offset).
+		Find(&scans).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return scans, total, nil
 }
 
 func (dao *scanDAO) DeleteScan(uuid string) error {

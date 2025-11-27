@@ -9,7 +9,6 @@ var (
 	ErrToolNotFound         = errors.New("tool not found")
 	ErrInvalidConfig        = errors.New("invalid configuration")
 	ErrDependencyCycle      = errors.New("dependency cycle detected")
-	ErrToolExecutionFailed  = errors.New("tool execution failed")
 	ErrDiscordNotConfigured = errors.New("discord client not configured")
 )
 

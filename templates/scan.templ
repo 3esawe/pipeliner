@@ -8,7 +8,16 @@ import (
 	"time"
 )
 
-templ GetScans(scans []models.Scan) {
+type PaginationInfo struct {
+	Page       int
+	Limit      int
+	Total      int
+	TotalPages int
+	HasNext    bool
+	HasPrev    bool
+}
+
+templ GetScans(scans []models.Scan, pagination PaginationInfo) {
 	@Base("Scans") {
 		<div class="container mx-auto p-6">
 			<!-- Page Header -->
@@ -29,6 +38,80 @@ templ GetScans(scans []models.Scan) {
 					</a>
 				</div>
 			</div>
+			
+			if len(scans) > 0 || pagination.Total > 0 {
+				<!-- Statistics Cards -->
+				<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+					<!-- Total Scans -->
+					<div class="bg-white rounded-lg shadow p-6">
+						<div class="flex items-center">
+							<div class="flex-shrink-0">
+								<div class="rounded-md bg-blue-500 p-3">
+									<svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+									</svg>
+								</div>
+							</div>
+							<div class="ml-4">
+								<p class="text-sm font-medium text-gray-500">Total Scans</p>
+								<p class="text-2xl font-semibold text-gray-900">{ fmt.Sprintf("%d", pagination.Total) }</p>
+							</div>
+						</div>
+					</div>
+					
+					<!-- Completed Scans -->
+					<div class="bg-white rounded-lg shadow p-6">
+						<div class="flex items-center">
+							<div class="flex-shrink-0">
+								<div class="rounded-md bg-green-500 p-3">
+									<svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+									</svg>
+								</div>
+							</div>
+							<div class="ml-4">
+								<p class="text-sm font-medium text-gray-500">Completed</p>
+								<p class="text-2xl font-semibold text-gray-900">{ fmt.Sprintf("%d", countByStatus(scans, "completed")) }</p>
+							</div>
+						</div>
+					</div>
+					
+					<!-- Running Scans -->
+					<div class="bg-white rounded-lg shadow p-6">
+						<div class="flex items-center">
+							<div class="flex-shrink-0">
+								<div class="rounded-md bg-yellow-500 p-3">
+									<svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+									</svg>
+								</div>
+							</div>
+							<div class="ml-4">
+								<p class="text-sm font-medium text-gray-500">Running</p>
+								<p class="text-2xl font-semibold text-gray-900">{ fmt.Sprintf("%d", countByStatus(scans, "running")) }</p>
+							</div>
+						</div>
+					</div>
+					
+					<!-- Failed Scans -->
+					<div class="bg-white rounded-lg shadow p-6">
+						<div class="flex items-center">
+							<div class="flex-shrink-0">
+								<div class="rounded-md bg-red-500 p-3">
+									<svg class="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+									</svg>
+								</div>
+							</div>
+							<div class="ml-4">
+								<p class="text-sm font-medium text-gray-500">Failed</p>
+								<p class="text-2xl font-semibold text-gray-900">{ fmt.Sprintf("%d", countByStatus(scans, "failed")) }</p>
+							</div>
+						</div>
+					</div>
+				</div>
+			}
+			
 			<div id="main-content">
 				if len(scans) == 0 {
 					<div class="text-center py-16">
@@ -118,10 +201,187 @@ templ GetScans(scans []models.Scan) {
 								</tbody>
 							</table>
 						</div>
+						
+						<!-- Pagination Controls -->
+						if pagination.TotalPages > 1 {
+							<div class="bg-gray-50 px-6 py-4 flex items-center justify-between border-t border-gray-200">
+								<div class="flex-1 flex justify-between sm:hidden">
+									<!-- Mobile Pagination -->
+									if pagination.HasPrev {
+										<a
+											href={ templ.URL(fmt.Sprintf("/scans?page=%d&limit=%d", pagination.Page-1, pagination.Limit)) }
+											class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+										>
+											Previous
+										</a>
+									} else {
+										<span class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-400 bg-gray-100 cursor-not-allowed">
+											Previous
+										</span>
+									}
+									if pagination.HasNext {
+										<a
+											href={ templ.URL(fmt.Sprintf("/scans?page=%d&limit=%d", pagination.Page+1, pagination.Limit)) }
+											class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+										>
+											Next
+										</a>
+									} else {
+										<span class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-400 bg-gray-100 cursor-not-allowed">
+											Next
+										</span>
+									}
+								</div>
+								<div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+									<div>
+										<p class="text-sm text-gray-700">
+											Showing
+											<span class="font-medium">{ fmt.Sprintf("%d", (pagination.Page-1)*pagination.Limit+1) }</span>
+											to
+											<span class="font-medium">
+												if pagination.Page*pagination.Limit > pagination.Total {
+													{ fmt.Sprintf("%d", pagination.Total) }
+												} else {
+													{ fmt.Sprintf("%d", pagination.Page*pagination.Limit) }
+												}
+											</span>
+											of
+											<span class="font-medium">{ fmt.Sprintf("%d", pagination.Total) }</span>
+											results
+										</p>
+									</div>
+									<div>
+										<nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+											<!-- Previous Button -->
+											if pagination.HasPrev {
+												<a
+													href={ templ.URL(fmt.Sprintf("/scans?page=%d&limit=%d", pagination.Page-1, pagination.Limit)) }
+													class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+												>
+													<span class="sr-only">Previous</span>
+													<svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+														<path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+													</svg>
+												</a>
+											} else {
+												<span class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-gray-100 text-sm font-medium text-gray-400 cursor-not-allowed">
+													<svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+														<path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+													</svg>
+												</span>
+											}
+											
+											<!-- Page Numbers -->
+											@renderPageNumbers(pagination)
+											
+											<!-- Next Button -->
+											if pagination.HasNext {
+												<a
+													href={ templ.URL(fmt.Sprintf("/scans?page=%d&limit=%d", pagination.Page+1, pagination.Limit)) }
+													class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+												>
+													<span class="sr-only">Next</span>
+													<svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+														<path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
+													</svg>
+												</a>
+											} else {
+												<span class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-gray-100 text-sm font-medium text-gray-400 cursor-not-allowed">
+													<svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+														<path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
+													</svg>
+												</span>
+											}
+										</nav>
+									</div>
+								</div>
+							</div>
+						}
 					</div>
 				}
 			</div>
 		</div>
+	}
+}
+
+templ renderPageNumbers(pagination PaginationInfo) {
+	// Show up to 7 page numbers with ellipsis
+	if pagination.TotalPages <= 7 {
+		// Show all pages
+		for i := 1; i <= pagination.TotalPages; i++ {
+			if i == pagination.Page {
+				<span class="relative inline-flex items-center px-4 py-2 border border-blue-500 bg-blue-50 text-sm font-medium text-blue-600">
+					{ fmt.Sprintf("%d", i) }
+				</span>
+			} else {
+				<a
+					href={ templ.URL(fmt.Sprintf("/scans?page=%d&limit=%d", i, pagination.Limit)) }
+					class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
+				>
+					{ fmt.Sprintf("%d", i) }
+				</a>
+			}
+		}
+	} else {
+		// Show first page
+		if pagination.Page == 1 {
+			<span class="relative inline-flex items-center px-4 py-2 border border-blue-500 bg-blue-50 text-sm font-medium text-blue-600">
+				1
+			</span>
+		} else {
+			<a
+				href={ templ.URL(fmt.Sprintf("/scans?page=1&limit=%d", pagination.Limit)) }
+				class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
+			>
+				1
+			</a>
+		}
+		
+		// Ellipsis or pages near current page
+		if pagination.Page > 3 {
+			<span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
+				...
+			</span>
+		}
+		
+		// Middle pages
+		for i := pagination.Page - 1; i <= pagination.Page + 1; i++ {
+			if i > 1 && i < pagination.TotalPages {
+				if i == pagination.Page {
+					<span class="relative inline-flex items-center px-4 py-2 border border-blue-500 bg-blue-50 text-sm font-medium text-blue-600">
+						{ fmt.Sprintf("%d", i) }
+					</span>
+				} else {
+					<a
+						href={ templ.URL(fmt.Sprintf("/scans?page=%d&limit=%d", i, pagination.Limit)) }
+						class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
+					>
+						{ fmt.Sprintf("%d", i) }
+					</a>
+				}
+			}
+		}
+		
+		// Ellipsis before last page
+		if pagination.Page < pagination.TotalPages - 2 {
+			<span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
+				...
+			</span>
+		}
+		
+		// Show last page
+		if pagination.Page == pagination.TotalPages {
+			<span class="relative inline-flex items-center px-4 py-2 border border-blue-500 bg-blue-50 text-sm font-medium text-blue-600">
+				{ fmt.Sprintf("%d", pagination.TotalPages) }
+			</span>
+		} else {
+			<a
+				href={ templ.URL(fmt.Sprintf("/scans?page=%d&limit=%d", pagination.TotalPages, pagination.Limit)) }
+				class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
+			>
+				{ fmt.Sprintf("%d", pagination.TotalPages) }
+			</a>
+		}
 	}
 }
 
@@ -138,6 +398,10 @@ templ statusBadge(status string) {
 		case "completed":
 			<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
 				Completed
+			</span>
+		case "completed_with_warnings":
+			<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
+				Completed with Warnings
 			</span>
 		case "failed":
 			<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
@@ -418,6 +682,29 @@ templ ScanDetailContent(scan *models.Scan) {
 		return
 	}
 	<div class="bg-white rounded-lg shadow-md p-6">
+		if len(scan.FailedTools) > 0 {
+			<div class="mb-6 rounded-lg border-2 border-yellow-300 bg-yellow-50 p-4">
+				<div class="flex items-start">
+					<svg class="h-5 w-5 text-yellow-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+					</svg>
+					<div class="ml-3 flex-1">
+						<h3 class="text-sm font-semibold text-yellow-800">Scan Completed With Warnings</h3>
+						<div class="mt-2 text-sm text-yellow-700">
+							<p class="mb-2">Some tools failed during execution, but the scan completed with partial results:</p>
+							<ul class="list-disc list-inside space-y-1 ml-2">
+								for _, failedTool := range scan.FailedTools {
+									<li class="font-mono text-xs">
+										<span class="font-semibold">{ failedTool.ToolName }</span>: { failedTool.Error }
+									</li>
+								}
+							</ul>
+							<p class="mt-3 text-xs">Check the scan logs in the scan directory for more details.</p>
+						</div>
+					</div>
+				</div>
+			</div>
+		}
 		<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 			<div class="lg:col-span-2 space-y-6">
 				<div>
@@ -709,20 +996,39 @@ templ ScanSubdomainsPage(scan *models.Scan) {
 													unknown
 												</span>
 											}
-										</td>
-										<td class="px-6 py-4">
-											if len(subdomain.OpenPorts) > 0 {
+									</td>
+									<td class="px-6 py-4">
+										if len(subdomain.OpenPorts) > 0 {
+											<div class="flex flex-wrap gap-1">
+												for _, port := range subdomain.OpenPorts {
+													<span class="inline-flex px-2 py-1 text-xs font-mono rounded bg-blue-50 text-blue-700 border border-blue-200">
+														{ port }
+													</span>
+												}
+											</div>
+										}
+										if len(subdomain.PotentialFalsePorts) > 0 {
+											<div class="mt-2 space-y-1">
+												<div class="flex items-center gap-1">
+													<svg class="h-3 w-3 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+													</svg>
+													<span class="text-xs font-medium text-yellow-700">Potential False Positives:</span>
+												</div>
 												<div class="flex flex-wrap gap-1">
-													for _, port := range subdomain.OpenPorts {
-														<span class="inline-flex px-2 py-1 text-xs font-mono rounded bg-blue-50 text-blue-700 border border-blue-200">
+													for _, port := range subdomain.PotentialFalsePorts {
+														<span class="inline-flex px-2 py-1 text-xs font-mono rounded bg-yellow-50 text-yellow-700 border border-yellow-200">
 															{ port }
 														</span>
 													}
 												</div>
-											} else {
-												<span class="text-sm text-gray-400">—</span>
-											}
-										</td>
+												<p class="text-xs text-yellow-600 mt-1">These ports may be reported by CDN/WAF, not the origin server</p>
+											</div>
+										}
+										if len(subdomain.OpenPorts) == 0 && len(subdomain.PotentialFalsePorts) == 0 {
+											<span class="text-sm text-gray-400">—</span>
+										}
+									</td>
 										<td class="px-6 py-4">
 											if len(subdomain.Vulns) > 0 {
 												<div class="flex flex-wrap gap-1">
@@ -868,6 +1174,16 @@ func countFfufOutputs(subdomains []models.Subdomain) int {
 	count := 0
 	for _, sub := range subdomains {
 		count += len(sub.DirFuzzing)
+	}
+	return count
+}
+
+func countByStatus(scans []models.Scan, status string) int {
+	count := 0
+	for _, scan := range scans {
+		if scan.Status == status {
+			count++
+		}
 	}
 	return count
 }

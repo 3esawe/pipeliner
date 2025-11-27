@@ -2,6 +2,7 @@ package templates
 
 import "pipeliner/pkg/tools"
 import "strconv"
+import "strings"
 
 templ CurrentConfig(pipelineConfigs []tools.ChainConfig) {
 	@Base("Configurations") {
@@ -11,6 +12,51 @@ templ CurrentConfig(pipelineConfigs []tools.ChainConfig) {
 				<h1 class="text-3xl font-bold text-gray-900 mb-2">Available Scan Configurations</h1>
 				<p class="text-gray-600">Choose from pre-built pipeline configurations for your security scanning needs</p>
 			</div>
+			
+			if len(pipelineConfigs) > 0 {
+				<!-- Search and Filter Bar -->
+				<div class="mb-6 bg-white rounded-lg shadow p-4">
+					<div class="flex flex-col sm:flex-row gap-4">
+						<!-- Search -->
+						<div class="flex-1">
+							<div class="relative">
+								<input
+									type="text"
+									id="config-search"
+									placeholder="Search configurations..."
+									class="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+									onkeyup="filterConfigs()"
+								/>
+								<svg class="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+								</svg>
+							</div>
+						</div>
+						
+						<!-- Category Filters -->
+						<div class="flex gap-2 flex-wrap">
+							<button onclick="filterByCategory('all')" class="filter-btn active px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors" data-category="all">
+								All
+							</button>
+							<button onclick="filterByCategory('recon')" class="filter-btn px-4 py-2 rounded-lg text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors" data-category="recon">
+								Recon
+							</button>
+							<button onclick="filterByCategory('subdomain')" class="filter-btn px-4 py-2 rounded-lg text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors" data-category="subdomain">
+								Subdomain
+							</button>
+							<button onclick="filterByCategory('demo')" class="filter-btn px-4 py-2 rounded-lg text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors" data-category="demo">
+								Examples
+							</button>
+						</div>
+					</div>
+					
+					<!-- Results Count -->
+					<div class="mt-3 text-sm text-gray-600">
+						Showing <span id="visible-count">{ strconv.Itoa(len(pipelineConfigs)) }</span> of <span id="total-count">{ strconv.Itoa(len(pipelineConfigs)) }</span> configurations
+					</div>
+				</div>
+			}
+			
 			if len(pipelineConfigs) == 0 {
 				<div class="text-center py-16">
 					<div class="text-gray-500">
@@ -25,11 +71,40 @@ templ CurrentConfig(pipelineConfigs []tools.ChainConfig) {
 				<!-- Configuration Grid -->
 				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="config-grid">
 					for i, config := range pipelineConfigs {
-						<div class="bg-white rounded-lg shadow-md hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer group">
+						<div 
+							class="config-card bg-white rounded-lg shadow-md hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer group"
+							data-config-name={ strings.ToLower(config.Name) }
+							data-config-description={ strings.ToLower(config.Description) }
+							data-category={ getCategoryFromName(config.Name) }
+						>
 							<div class="p-6">
 								<!-- Config Header -->
 								<div class="flex items-start justify-between mb-4">
 									<div class="flex-1">
+										<!-- Badges -->
+										<div class="flex gap-2 mb-2 flex-wrap">
+											if config.Name == "full_recon" {
+												<span class="px-2 py-1 text-xs font-semibold bg-yellow-100 text-yellow-800 rounded-full">
+													⭐ RECOMMENDED
+												</span>
+											}
+											if strings.Contains(strings.ToLower(config.Name), "demo") || strings.Contains(strings.ToLower(config.Name), "test") {
+												<span class="px-2 py-1 text-xs font-semibold bg-purple-100 text-purple-800 rounded-full">
+													📚 EXAMPLE
+												</span>
+											}
+											if strings.Contains(strings.ToLower(config.Name), "quick") {
+												<span class="px-2 py-1 text-xs font-semibold bg-green-100 text-green-800 rounded-full">
+													⚡ FAST
+												</span>
+											}
+											if config.ExecutionMode == "concurrent" || config.ExecutionMode == "hybrid" {
+												<span class="px-2 py-1 text-xs font-semibold bg-blue-100 text-blue-800 rounded-full">
+													🚀 PARALLEL
+												</span>
+											}
+										</div>
+										
 										<h3 class="text-lg font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
 											{ config.Description }
 										</h3>
@@ -345,4 +420,65 @@ templ ConfigDetails(config tools.ChainConfig) {
 			</div>
 		</div>
 	</div>
+	
+	<!-- Filtering JavaScript -->
+	<script>
+		function filterConfigs() {
+			const searchInput = document.getElementById('config-search');
+			const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+			const activeCategory = document.querySelector('.filter-btn.active')?.dataset.category || 'all';
+			
+			const cards = document.querySelectorAll('.config-card');
+			let visibleCount = 0;
+			
+			cards.forEach(card => {
+				const name = card.dataset.configName || '';
+				const description = card.dataset.configDescription || '';
+				const category = card.dataset.category || '';
+				
+				const matchesSearch = name.includes(searchTerm) || description.includes(searchTerm);
+				const matchesCategory = activeCategory === 'all' || category === activeCategory;
+				
+				if (matchesSearch && matchesCategory) {
+					card.style.display = '';
+					visibleCount++;
+				} else {
+					card.style.display = 'none';
+				}
+			});
+			
+			const visibleCountEl = document.getElementById('visible-count');
+			if (visibleCountEl) {
+				visibleCountEl.textContent = visibleCount;
+			}
+		}
+		
+		function filterByCategory(category) {
+			const buttons = document.querySelectorAll('.filter-btn');
+			buttons.forEach(btn => {
+				if (btn.dataset.category === category) {
+					btn.classList.remove('bg-gray-200', 'text-gray-700');
+					btn.classList.add('bg-blue-600', 'text-white', 'active');
+				} else {
+					btn.classList.remove('bg-blue-600', 'text-white', 'active');
+					btn.classList.add('bg-gray-200', 'text-gray-700');
+				}
+			});
+			filterConfigs();
+		}
+	</script>
+}
+
+func getCategoryFromName(name string) string {
+	nameLower := strings.ToLower(name)
+	if strings.Contains(nameLower, "demo") || strings.Contains(nameLower, "test") {
+		return "demo"
+	}
+	if strings.Contains(nameLower, "subdomain") {
+		return "subdomain"
+	}
+	if strings.Contains(nameLower, "recon") || strings.Contains(nameLower, "full") {
+		return "recon"
+	}
+	return "other"
 }

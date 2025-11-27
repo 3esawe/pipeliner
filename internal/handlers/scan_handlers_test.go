@@ -34,6 +34,14 @@ func (m *MockScanService) ListScans() ([]models.Scan, error) {
 	return args.Get(0).([]models.Scan), args.Error(1)
 }
 
+func (m *MockScanService) ListScansWithPagination(page, limit int) ([]models.Scan, int64, error) {
+	args := m.Called(page, limit)
+	if args.Get(0) == nil {
+		return nil, 0, args.Error(2)
+	}
+	return args.Get(0).([]models.Scan), args.Get(1).(int64), args.Error(2)
+}
+
 func (m *MockScanService) GetScanByUUID(id string) (*models.Scan, error) {
 	args := m.Called(id)
 	if args.Get(0) == nil {

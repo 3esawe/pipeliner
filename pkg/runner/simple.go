@@ -64,21 +64,25 @@ func (r *SimpleRunner) Run(ctx context.Context, command string, args []string) e
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
+
+	stdoutStr := stdout.String()
+	stderrStr := stderr.String()
+
 	if err != nil {
 		if stderr.Len() > 0 {
 			r.logger.WithFields(logger.Fields{
-				"stderr": stderr.String(),
+				"stderr": stderrStr,
 			}).Error("Command stderr output")
 		}
 		if stdout.Len() > 0 {
 			r.logger.WithFields(logger.Fields{
-				"stdout": stdout.String(),
+				"stdout": stdoutStr,
 			}).Info("Command stdout output")
 		}
 
 		errorMsg := fmt.Sprintf("execution failed: %v", err)
 		if stderr.Len() > 0 {
-			errorMsg = fmt.Sprintf("%s\nstderr: %s", errorMsg, stderr.String())
+			errorMsg = fmt.Sprintf("%s\nstderr: %s", errorMsg, stderrStr)
 		}
 
 		r.logger.WithError(err).Error("Command execution failed")
@@ -87,7 +91,7 @@ func (r *SimpleRunner) Run(ctx context.Context, command string, args []string) e
 
 	if stdout.Len() > 0 {
 		r.logger.WithFields(logger.Fields{
-			"stdout": stdout.String(),
+			"stdout": stdoutStr,
 		}).Debug("Command stdout output")
 	}
 

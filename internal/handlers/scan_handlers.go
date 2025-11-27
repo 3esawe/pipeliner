@@ -65,13 +65,47 @@ func (h *ScanHandler) GetScanByUUID(c *gin.Context) {
 }
 
 func (h *ScanHandler) ListScans(c *gin.Context) {
-	scans, err := h.scanService.ListScans()
+	var pagination PaginationRequest
+
+	if err := c.ShouldBindQuery(&pagination); err != nil {
+		h.logger.Warn("Failed to bind pagination params, using defaults", logger.Fields{"error": err})
+	}
+
+	if pagination.Page < 1 {
+		pagination.Page = 1
+	}
+	if pagination.Limit < 1 {
+		pagination.Limit = 10
+	}
+	if pagination.Limit > 100 {
+		pagination.Limit = 100
+	}
+
+	scans, total, err := h.scanService.ListScansWithPagination(pagination.Page, pagination.Limit)
 	if err != nil {
 		h.logger.Error("Failed to list scans:", logger.Fields{"error": err})
 		c.JSON(500, gin.H{"error": "Failed to list scans"})
 		return
 	}
-	c.JSON(200, scans)
+
+	totalPages := int(total) / pagination.Limit
+	if int(total)%pagination.Limit != 0 {
+		totalPages++
+	}
+
+	response := PaginatedScansResponse{
+		Scans: scans,
+		Pagination: PaginationMeta{
+			Page:       pagination.Page,
+			Limit:      pagination.Limit,
+			Total:      int(total),
+			TotalPages: totalPages,
+			HasNext:    pagination.Page < totalPages,
+			HasPrev:    pagination.Page > 1,
+		},
+	}
+
+	c.JSON(200, response)
 }
 
 func (h *ScanHandler) DeleteScan(c *gin.Context) {

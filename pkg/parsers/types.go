@@ -68,3 +68,22 @@ type FuffResult struct {
 	URL              string            `json:"url"` // Changed from Url to URL (Go convention)
 	Host             string            `json:"host"`
 }
+
+type NucleiResult struct {
+	TemplateID    string                 `json:"template-id"`
+	TemplatePath  string                 `json:"template-path"`
+	Info          map[string]interface{} `json:"info"`
+	MatcherName   string                 `json:"matcher-name"`
+	Type          string                 `json:"type"`
+	Host          string                 `json:"host"`
+	Port          string                 `json:"port"`
+	Scheme        string                 `json:"scheme"`
+	URL           string                 `json:"url"`
+	MatchedAt     string                 `json:"matched-at"`
+	Request       string                 `json:"request"`
+	Response      string                 `json:"response"`
+	IP            string                 `json:"ip"`
+	Timestamp     string                 `json:"timestamp"`
+	CurlCommand   string                 `json:"curl-command"`
+	MatcherStatus bool                   `json:"matcher-status"`
+}

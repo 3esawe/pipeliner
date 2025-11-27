@@ -79,6 +79,9 @@ func (c *NotificationClient) Send(msg Message) error {
 	if len(msg.Fields) > 0 {
 		fields := make([]*discordgo.MessageEmbedField, 0, len(msg.Fields))
 		for key, value := range msg.Fields {
+			if len(value) > 1024 {
+				value = value[:1021] + "..."
+			}
 			fields = append(fields, &discordgo.MessageEmbedField{
 				Name:   key,
 				Value:  value,

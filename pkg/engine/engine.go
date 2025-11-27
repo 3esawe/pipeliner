@@ -142,7 +142,7 @@ func (e *PiplinerEngine) RunHTTP(scanType, domain string) (err error) {
 	e.logger.Info("Starting HTTP scan", logger.Fields{"domain": domain, "module": scanType})
 	if err := e.runTools(); err != nil {
 		e.logger.Error("HTTP scan failed", logger.Fields{"error": err})
-		return errors.ErrToolExecutionFailed
+		return fmt.Errorf("tool execution failed: %w", err)
 	}
 
 	e.logger.Info("HTTP scan completed", logger.Fields{"domain": domain, "module": scanType})
@@ -156,7 +156,7 @@ func (e *PiplinerEngine) Run() error {
 	e.logger.Info("Starting Pipeliner Engine")
 	if err := e.runTools(); err != nil {
 		e.logger.Error("Initial tool run failed", logger.Fields{"error": err})
-		return errors.ErrToolExecutionFailed
+		return fmt.Errorf("initial tool run failed: %w", err)
 	}
 
 	for {
@@ -168,7 +168,7 @@ func (e *PiplinerEngine) Run() error {
 			e.logger.Info("Running periodic pipeline")
 			if err := e.runTools(); err != nil {
 				e.logger.Error("Periodic pipeline failed", logger.Fields{"error": err})
-				return errors.ErrToolExecutionFailed
+				return fmt.Errorf("periodic pipeline failed: %w", err)
 			}
 		}
 	}

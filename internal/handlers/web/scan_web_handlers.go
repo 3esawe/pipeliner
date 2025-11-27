@@ -26,15 +26,53 @@ func NewScanWebHandler(scanService services.ScanServiceMethods, configService se
 }
 
 func (h *ScanWebHandler) ScansPage(c *gin.Context) {
-	scans, err := h.scanService.ListScans()
-	h.logger.Info("Rendering ScansPage", logger.Fields{"scan_count": len(scans)})
+	var pagination struct {
+		Page  int `form:"page"`
+		Limit int `form:"limit"`
+	}
+
+	if err := c.ShouldBindQuery(&pagination); err != nil {
+		h.logger.Warn("Failed to bind pagination params, using defaults", logger.Fields{"error": err})
+	}
+
+	if pagination.Page < 1 {
+		pagination.Page = 1
+	}
+	if pagination.Limit < 1 {
+		pagination.Limit = 20
+	}
+	if pagination.Limit > 100 {
+		pagination.Limit = 100
+	}
+
+	scans, total, err := h.scanService.ListScansWithPagination(pagination.Page, pagination.Limit)
 	if err != nil {
 		h.logger.Error("Failed to list scans", logger.Fields{"error": err})
 		c.Status(500)
 		return
 	}
 
-	if err := templates.GetScans(scans).Render(c, c.Writer); err != nil {
+	totalPages := int(total) / pagination.Limit
+	if int(total)%pagination.Limit != 0 {
+		totalPages++
+	}
+
+	paginationMeta := templates.PaginationInfo{
+		Page:       pagination.Page,
+		Limit:      pagination.Limit,
+		Total:      int(total),
+		TotalPages: totalPages,
+		HasNext:    pagination.Page < totalPages,
+		HasPrev:    pagination.Page > 1,
+	}
+
+	h.logger.Info("Rendering ScansPage", logger.Fields{
+		"scan_count": len(scans),
+		"page":       pagination.Page,
+		"total":      total,
+	})
+
+	if err := templates.GetScans(scans, paginationMeta).Render(c, c.Writer); err != nil {
 		h.logger.Error("Failed to render scans template", logger.Fields{"error": err})
 		c.Status(500)
 		return

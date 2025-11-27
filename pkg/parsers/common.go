@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"os"
+
 	"pipeliner/pkg/logger"
 
 	"github.com/sirupsen/logrus"
@@ -59,10 +60,13 @@ func (p *NmapParser) parseNmapOutput(outputFile string) (map[string]any, error) 
 	hosts := make([]map[string]any, 0, len(nmapResult.Hosts))
 
 	for _, host := range nmapResult.Hosts {
+		isSuspicious := isLikelyFalsePositive(host)
+
 		hostInfo := map[string]any{
-			"addresses": host.Addresses,
-			"ports":     host.Ports.PortList,
-			"hostnames": host.Hostnames.HostnameList,
+			"addresses":             host.Addresses,
+			"ports":                 host.Ports.PortList,
+			"hostnames":             host.Hostnames.HostnameList,
+			"likely_false_positive": isSuspicious,
 		}
 		hosts = append(hosts, hostInfo)
 	}
@@ -70,6 +74,17 @@ func (p *NmapParser) parseNmapOutput(outputFile string) (map[string]any, error) 
 
 	p.logger.Infof("Successfully parsed %d hosts from Nmap output", len(hosts))
 	return result, nil
+}
+
+func isLikelyFalsePositive(host Host) bool {
+	var portCount int
+	for _, port := range host.Ports.PortList {
+		if port.State.State == "open" {
+			portCount++
+		}
+	}
+
+	return portCount > 20
 }
 
 func (p *FuffParser) Parse(outputFile string) (map[string]any, error) {
@@ -105,4 +120,73 @@ func (p *FuffParser) parseFuffOutput(outputFile string) (map[string]any, error) 
 
 	p.logger.Infof("Successfully parsed %d results from Ffuf output", len(fuffResult.Results))
 	return result, nil
+}
+
+type NucleiParser struct {
+	logger *logger.Logger
+}
+
+func NewNucleiParser() *NucleiParser {
+	return &NucleiParser{logger: logger.NewLogger(logrus.InfoLevel)}
+}
+
+func (p *NucleiParser) Parse(outputFile string) (map[string]any, error) {
+	if p.logger == nil {
+		p.logger = logger.NewLogger(logrus.InfoLevel)
+	}
+	return p.parseNucleiOutput(outputFile)
+}
+
+func (p *NucleiParser) parseNucleiOutput(outputFile string) (map[string]any, error) {
+	if _, err := os.Stat(outputFile); os.IsNotExist(err) {
+		p.logger.Errorf("Nuclei output file does not exist: %s", outputFile)
+		return nil, fmt.Errorf("nuclei output file does not exist: %w", err)
+	}
+
+	data, err := os.ReadFile(outputFile)
+	if err != nil {
+		p.logger.Errorf("Failed to read Nuclei output file: %v", err)
+		return nil, fmt.Errorf("failed to read nuclei output file: %w", err)
+	}
+
+	var results []NucleiResult
+	lines := splitLines(data)
+
+	for _, line := range lines {
+		if len(line) == 0 {
+			continue
+		}
+
+		var result NucleiResult
+		if err := json.Unmarshal(line, &result); err != nil {
+			p.logger.Warnf("Failed to parse nuclei JSON line: %v", err)
+			continue
+		}
+		results = append(results, result)
+	}
+
+	resultMap := map[string]any{
+		"results": results,
+		"count":   len(results),
+	}
+
+	p.logger.Infof("Successfully parsed %d results from Nuclei output", len(results))
+	return resultMap, nil
+}
+
+func splitLines(data []byte) [][]byte {
+	var lines [][]byte
+	start := 0
+	for i, b := range data {
+		if b == '\n' {
+			if i > start {
+				lines = append(lines, data[start:i])
+			}
+			start = i + 1
+		}
+	}
+	if start < len(data) {
+		lines = append(lines, data[start:])
+	}
+	return lines
 }

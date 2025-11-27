@@ -18,16 +18,39 @@ templ Base(title string) {
 					<div class="flex items-center justify-between">
 						<div class="flex items-center space-x-4">
 							<a href="/" class="text-xl font-bold text-gray-900">Pipeliner</a>
-							<span class="text-gray-500">|</span>
-							<nav class="flex space-x-4">
+							<span class="text-gray-500 hidden md:inline">|</span>
+							<nav class="hidden md:flex space-x-4">
 								<a href="/" class="text-gray-600 hover:text-blue-600 transition-colors">Home</a>
 								<a href="/config" class="text-gray-600 hover:text-blue-600 transition-colors">Configurations</a>
 								<a href="/scans" class="text-gray-600 hover:text-blue-600 transition-colors">Scans</a>
 							</nav>
 						</div>
+						
+						<!-- Mobile menu button -->
+						<button id="mobile-menu-btn" class="md:hidden p-2 rounded-lg hover:bg-gray-100" onclick="toggleMobileMenu()">
+							<svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+							</svg>
+						</button>
+					</div>
+					
+					<!-- Mobile menu -->
+					<div id="mobile-menu" class="hidden md:hidden mt-4 pb-2">
+						<div class="flex flex-col space-y-2">
+							<a href="/" class="px-3 py-2 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-blue-600 transition-colors">Home</a>
+							<a href="/config" class="px-3 py-2 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-blue-600 transition-colors">Configurations</a>
+							<a href="/scans" class="px-3 py-2 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-blue-600 transition-colors">Scans</a>
+						</div>
 					</div>
 				</div>
 			</nav>
+			
+			<script>
+				function toggleMobileMenu() {
+					const menu = document.getElementById('mobile-menu');
+					menu.classList.toggle('hidden');
+				}
+			</script>
 			<!-- Main Content -->
 			<main>
 				{ children... }
@@ -40,4 +63,46 @@ templ Base(title string) {
 			</footer>
 		</body>
 	</html>
+}
+
+// Skeleton loader for config cards
+templ ConfigCardSkeleton() {
+	<div class="bg-white rounded-lg shadow-md p-6 animate-pulse">
+		<div class="flex items-start justify-between mb-4">
+			<div class="flex-1">
+				<div class="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+				<div class="h-3 bg-gray-200 rounded w-1/2"></div>
+			</div>
+		</div>
+		<div class="flex items-center space-x-4 mb-4">
+			<div class="h-3 bg-gray-200 rounded w-16"></div>
+			<div class="h-3 bg-gray-200 rounded w-20"></div>
+			<div class="h-3 bg-gray-200 rounded w-16"></div>
+		</div>
+		<div class="mb-4">
+			<div class="h-3 bg-gray-200 rounded w-24 mb-2"></div>
+			<div class="flex gap-2">
+				<div class="h-6 bg-gray-200 rounded w-16"></div>
+				<div class="h-6 bg-gray-200 rounded w-16"></div>
+				<div class="h-6 bg-gray-200 rounded w-16"></div>
+			</div>
+		</div>
+		<div class="flex space-x-2">
+			<div class="flex-1 h-9 bg-gray-200 rounded"></div>
+			<div class="flex-1 h-9 bg-gray-200 rounded"></div>
+		</div>
+	</div>
+}
+
+// Skeleton loader for scan rows
+templ ScanRowSkeleton() {
+	<tr class="animate-pulse">
+		<td class="px-6 py-4"><div class="h-4 bg-gray-200 rounded w-20"></div></td>
+		<td class="px-6 py-4"><div class="h-6 bg-gray-200 rounded w-16"></div></td>
+		<td class="px-6 py-4"><div class="h-6 bg-gray-200 rounded w-20"></div></td>
+		<td class="px-6 py-4"><div class="h-4 bg-gray-200 rounded w-32"></div></td>
+		<td class="px-6 py-4"><div class="h-4 bg-gray-200 rounded w-12"></div></td>
+		<td class="px-6 py-4"><div class="h-4 bg-gray-200 rounded w-24"></div></td>
+		<td class="px-6 py-4"><div class="h-4 bg-gray-200 rounded w-16"></div></td>
+	</tr>
 }
