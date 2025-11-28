@@ -362,8 +362,8 @@ func (a *ArtifactProcessor) processNucleiOutput(scan *models.Scan, scanDir strin
 			host = nucleiResult.URL
 		}
 
-		severity := a.getNucleiSeverity(nucleiResult.Info)
-		templateName := a.getNucleiTemplateName(nucleiResult.Info)
+		severity := parsers.GetNucleiSeverity(nucleiResult.Info)
+		templateName := parsers.GetNucleiTemplateName(nucleiResult.Info)
 
 		for i := range scan.Subdomains {
 			subdomainHost := strings.TrimPrefix(scan.Subdomains[i].Domain, "https://")
@@ -392,18 +392,4 @@ func (a *ArtifactProcessor) processNucleiOutput(scan *models.Scan, scanDir strin
 		"scan_id":     scan.UUID,
 		"total_vulns": len(results),
 	})
-}
-
-func (a *ArtifactProcessor) getNucleiSeverity(info map[string]interface{}) string {
-	if severity, ok := info["severity"].(string); ok {
-		return strings.ToLower(severity)
-	}
-	return "info"
-}
-
-func (a *ArtifactProcessor) getNucleiTemplateName(info map[string]interface{}) string {
-	if name, ok := info["name"].(string); ok {
-		return name
-	}
-	return "Unknown Template"
 }

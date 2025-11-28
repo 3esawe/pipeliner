@@ -92,15 +92,18 @@ tools:
     replace_from: "httpx_output.txt"
     depends_on: ["httpxbb"]
     flags:
+      - flag: "-noninteractive"
+        description: "Disable interactive mode to prevent stdin issues"
+        default: ""
       - flag: "-u"
         option: "Input"
-        default: "{{URL}}FUZZ"
+        default: "{{URL}}/FUZZ"
       - flag: "-w"
         option: "Wordlist"
-        default: "/home/alesawe/bbtools/data/manual/raft-large-directories-lowercase.txt"
+        default: "/home/alesawe/bbtools/data/manual/raft-small-directories-lowercase.txt"
       - flag: "-mc"
         description: "Match response code"
-        default: "200,403,301,302"
+        default: "200"
       - flag: "-fs"
         description: "filter out 0 response sizes"
         default: "0"
@@ -128,6 +131,9 @@ tools:
       - flag: "--screenshot-path"
         option: "ScreenshotPath"
         default: "."
+      - flag: "-t"
+        option: "Threads"
+        default: "2"
 
   - name: nuclei
     description: Vulnerability scanner using templates
@@ -144,7 +150,7 @@ tools:
         default: "nuclei_output.json"
       - flag: "-s"
         option: "Severity values"
-        default: "high,critical"
+        default: "medium,high,critical"
       - flag: "-pt"
         option: "Protocol types"
         default: "http,dns"
@@ -152,4 +158,4 @@ tools:
         option: "Concurrency"
         default: "5"
     posthooks:
-      - "NotifierHook"
+      - "NucleiNotifier"

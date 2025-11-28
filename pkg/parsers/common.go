@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"os"
+	"strings"
 
 	"pipeliner/pkg/logger"
 
@@ -189,4 +190,41 @@ func splitLines(data []byte) [][]byte {
 		lines = append(lines, data[start:])
 	}
 	return lines
+}
+
+func GetNucleiSeverity(info map[string]interface{}) string {
+	if severity, ok := info["severity"].(string); ok {
+		return strings.ToLower(severity)
+	}
+	return "info"
+}
+
+func GetNucleiTemplateName(info map[string]interface{}) string {
+	if name, ok := info["name"].(string); ok {
+		return name
+	}
+	return "Unknown Template"
+}
+
+func GetNucleiDescription(info map[string]interface{}) string {
+	if desc, ok := info["description"].(string); ok {
+		return strings.TrimSpace(desc)
+	}
+	return ""
+}
+
+func GetNucleiTags(info map[string]interface{}) string {
+	if tags, ok := info["tags"].([]interface{}); ok {
+		var tagStrs []string
+		for _, t := range tags {
+			if s, ok := t.(string); ok {
+				tagStrs = append(tagStrs, s)
+			}
+		}
+		if len(tagStrs) > 5 {
+			tagStrs = tagStrs[:5]
+		}
+		return strings.Join(tagStrs, ", ")
+	}
+	return ""
 }

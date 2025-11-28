@@ -38,7 +38,6 @@ templ GetScans(scans []models.Scan, pagination PaginationInfo) {
 					</a>
 				</div>
 			</div>
-			
 			if len(scans) > 0 || pagination.Total > 0 {
 				<!-- Statistics Cards -->
 				<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -58,7 +57,6 @@ templ GetScans(scans []models.Scan, pagination PaginationInfo) {
 							</div>
 						</div>
 					</div>
-					
 					<!-- Completed Scans -->
 					<div class="bg-white rounded-lg shadow p-6">
 						<div class="flex items-center">
@@ -75,7 +73,6 @@ templ GetScans(scans []models.Scan, pagination PaginationInfo) {
 							</div>
 						</div>
 					</div>
-					
 					<!-- Running Scans -->
 					<div class="bg-white rounded-lg shadow p-6">
 						<div class="flex items-center">
@@ -92,7 +89,6 @@ templ GetScans(scans []models.Scan, pagination PaginationInfo) {
 							</div>
 						</div>
 					</div>
-					
 					<!-- Failed Scans -->
 					<div class="bg-white rounded-lg shadow p-6">
 						<div class="flex items-center">
@@ -111,7 +107,6 @@ templ GetScans(scans []models.Scan, pagination PaginationInfo) {
 					</div>
 				</div>
 			}
-			
 			<div id="main-content">
 				if len(scans) == 0 {
 					<div class="text-center py-16">
@@ -201,7 +196,6 @@ templ GetScans(scans []models.Scan, pagination PaginationInfo) {
 								</tbody>
 							</table>
 						</div>
-						
 						<!-- Pagination Controls -->
 						if pagination.TotalPages > 1 {
 							<div class="bg-gray-50 px-6 py-4 flex items-center justify-between border-t border-gray-200">
@@ -270,10 +264,8 @@ templ GetScans(scans []models.Scan, pagination PaginationInfo) {
 													</svg>
 												</span>
 											}
-											
 											<!-- Page Numbers -->
 											@renderPageNumbers(pagination)
-											
 											<!-- Next Button -->
 											if pagination.HasNext {
 												<a
@@ -336,14 +328,12 @@ templ renderPageNumbers(pagination PaginationInfo) {
 				1
 			</a>
 		}
-		
 		// Ellipsis or pages near current page
 		if pagination.Page > 3 {
 			<span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
 				...
 			</span>
 		}
-		
 		// Middle pages
 		for i := pagination.Page - 1; i <= pagination.Page + 1; i++ {
 			if i > 1 && i < pagination.TotalPages {
@@ -361,14 +351,12 @@ templ renderPageNumbers(pagination PaginationInfo) {
 				}
 			}
 		}
-		
 		// Ellipsis before last page
 		if pagination.Page < pagination.TotalPages - 2 {
 			<span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
 				...
 			</span>
 		}
-		
 		// Show last page
 		if pagination.Page == pagination.TotalPages {
 			<span class="relative inline-flex items-center px-4 py-2 border border-blue-500 bg-blue-50 text-sm font-medium text-blue-600">
@@ -996,39 +984,39 @@ templ ScanSubdomainsPage(scan *models.Scan) {
 													unknown
 												</span>
 											}
-									</td>
-									<td class="px-6 py-4">
-										if len(subdomain.OpenPorts) > 0 {
-											<div class="flex flex-wrap gap-1">
-												for _, port := range subdomain.OpenPorts {
-													<span class="inline-flex px-2 py-1 text-xs font-mono rounded bg-blue-50 text-blue-700 border border-blue-200">
-														{ port }
-													</span>
-												}
-											</div>
-										}
-										if len(subdomain.PotentialFalsePorts) > 0 {
-											<div class="mt-2 space-y-1">
-												<div class="flex items-center gap-1">
-													<svg class="h-3 w-3 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
-													</svg>
-													<span class="text-xs font-medium text-yellow-700">Potential False Positives:</span>
-												</div>
+										</td>
+										<td class="px-6 py-4">
+											if len(subdomain.OpenPorts) > 0 {
 												<div class="flex flex-wrap gap-1">
-													for _, port := range subdomain.PotentialFalsePorts {
-														<span class="inline-flex px-2 py-1 text-xs font-mono rounded bg-yellow-50 text-yellow-700 border border-yellow-200">
+													for _, port := range subdomain.OpenPorts {
+														<span class="inline-flex px-2 py-1 text-xs font-mono rounded bg-blue-50 text-blue-700 border border-blue-200">
 															{ port }
 														</span>
 													}
 												</div>
-												<p class="text-xs text-yellow-600 mt-1">These ports may be reported by CDN/WAF, not the origin server</p>
-											</div>
-										}
-										if len(subdomain.OpenPorts) == 0 && len(subdomain.PotentialFalsePorts) == 0 {
-											<span class="text-sm text-gray-400">—</span>
-										}
-									</td>
+											}
+											if len(subdomain.PotentialFalsePorts) > 0 {
+												<div class="mt-2 space-y-1">
+													<div class="flex items-center gap-1">
+														<svg class="h-3 w-3 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+															<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+														</svg>
+														<span class="text-xs font-medium text-yellow-700">Potential False Positives:</span>
+													</div>
+													<div class="flex flex-wrap gap-1">
+														for _, port := range subdomain.PotentialFalsePorts {
+															<span class="inline-flex px-2 py-1 text-xs font-mono rounded bg-yellow-50 text-yellow-700 border border-yellow-200">
+																{ port }
+															</span>
+														}
+													</div>
+													<p class="text-xs text-yellow-600 mt-1">These ports may be reported by CDN/WAF, not the origin server</p>
+												</div>
+											}
+											if len(subdomain.OpenPorts) == 0 && len(subdomain.PotentialFalsePorts) == 0 {
+												<span class="text-sm text-gray-400">—</span>
+											}
+										</td>
 										<td class="px-6 py-4">
 											if len(subdomain.Vulns) > 0 {
 												<div class="flex flex-wrap gap-1">
@@ -1160,8 +1148,6 @@ func countNmapOutputs(subdomains []models.Subdomain) int {
 	count := 0
 	for _, sub := range subdomains {
 		for _, path := range sub.OpenPorts {
-			// Count actual port strings, not file paths
-			// Ports are formatted like "80/tcp (http)"
 			if !strings.Contains(path, "/") || strings.Contains(path, "/tcp") || strings.Contains(path, "/udp") {
 				count++
 			}

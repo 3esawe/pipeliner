@@ -7,13 +7,16 @@ import (
 	"pipeliner/internal/handlers/web"
 	"pipeliner/internal/services"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
 func InitRouter(db *gorm.DB) *gin.Engine {
 	router := gin.Default()
-
+	config := cors.DefaultConfig()
+	config.AllowOrigins = []string{"http://127.0.0.1:3000"}
+	router.Use(cors.New(config))
 	cwd, err := os.Getwd()
 	if err != nil {
 		panic("failed to get current working directory: " + err.Error())

@@ -281,10 +281,10 @@ func NewListHooksCommand() *cobra.Command {
 
 func InitHooks() {
 	combineOutput := hooks.NewCombineOutput()
-	notifierHook := hooks.NewNotifierHook(hooks.NotifierHookConfig{
+	nucleiNotifier := hooks.NewNucleiNotifierHook(hooks.NucleiNotifierHookConfig{
 		Filename: "nuclei_output.json",
 	})
 
 	tools.RegisterStageHook(tools.StageSubdomain, combineOutput)
-	tools.RegisterPostHook("NotifierHook", notifierHook)
+	tools.RegisterPostHook("NucleiNotifier", nucleiNotifier)
 }
