@@ -6,7 +6,7 @@ version: 2
 before:
   hooks:
     - go mod tidy
-    - go install github.com/a-h/templ/cmd/templ@latest
+    - go install github.com/a-h/templ/cmd/templ@v0.3.943
     - templ generate
 
 builds:

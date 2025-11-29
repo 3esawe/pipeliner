@@ -12,6 +12,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
     - uses: actions/checkout@v4
 
@@ -21,7 +23,7 @@ jobs:
         go-version: '1.23'
 
     - name: Install templ CLI
-      run: go install github.com/a-h/templ/cmd/templ@latest
+      run: go install github.com/a-h/templ/cmd/templ@v0.3.943
 
     - name: Install dependencies
       run: go mod download
