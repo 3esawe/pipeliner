@@ -1,0 +1,42 @@
+# Release workflow - runs on version tags and manual dispatch
+# Purpose: Create releases with binaries using GoReleaser
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.23'
+
+    - name: Install templ CLI
+      run: go install github.com/a-h/templ/cmd/templ@latest
+
+    - name: Install dependencies
+      run: go mod download
+
+    - name: Templ generate
+      run: templ generate
+
+    - name: Run GoReleaser
+      uses: goreleaser/goreleaser-action@v6
+      with:
+        version: latest
+        args: release --clean
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
