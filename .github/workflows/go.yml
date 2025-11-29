@@ -6,6 +6,8 @@ name: Go
 on:
   push:
     branches: [ "main" ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ "main" ]
 
@@ -19,13 +21,61 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: '1.24.5'
+        go-version: '1.23'
+    
+    - name: Install templ CLI
+      run: |
+        go install github.com/a-h/templ/cmd/templ@latest
+        export PATH=$PATH:$HOME/go/bin
+    
     - name: Install dependencies
-      run: go get ./...
-    - name: Temple generate
-      run: templ generate  
+      run: go get ./... 
+    
+    - name: Templ generate
+      run: $HOME/go/bin/templ generate
+    
     - name: Build
-      run: go build -v ./...
+      run: go build -v ./... 
 
     - name: Test
-      run: go test -v ./...
+      run: go test -v ./... 
+
+  release:
+    needs: build
+    if: startsWith(github. ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.23'
+    
+    - name: Install templ CLI
+      run: go install github.com/a-h/templ/cmd/templ@latest
+    
+    - name: Install dependencies
+      run: go get ./... 
+    
+    - name: Templ generate
+      run: $HOME/go/bin/templ generate
+
+    - name: Build binaries for multiple platforms
+      run: |
+        mkdir -p dist
+        GOOS=linux GOARCH=amd64 go build -o dist/pipeliner-linux-amd64 ./...
+        GOOS=linux GOARCH=arm64 go build -o dist/pipeliner-linux-arm64 ./...
+        GOOS=darwin GOARCH=amd64 go build -o dist/pipeliner-darwin-amd64 ./...
+        GOOS=darwin GOARCH=arm64 go build -o dist/pipeliner-darwin-arm64 ./...
+        GOOS=windows GOARCH=amd64 go build -o dist/pipeliner-windows-amd64.exe ./... 
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: dist/*
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
