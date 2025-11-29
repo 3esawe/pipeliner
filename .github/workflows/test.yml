@@ -1,0 +1,38 @@
+# Test workflow - runs on push to main and pull requests
+# Purpose: Run tests and validation only
+
+name: Test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.23'
+
+    - name: Install templ CLI
+      run: go install github.com/a-h/templ/cmd/templ@v0.3.943
+
+    - name: Install dependencies
+      run: go mod download
+
+    - name: Templ generate
+      run: templ generate
+
+    - name: Build
+      run: go build -v ./...
+
+    - name: Test
+      run: go test -v ./...
