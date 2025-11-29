@@ -184,6 +184,25 @@ func (h *ScanWebHandler) SubdomainsPage(c *gin.Context) {
 		return
 	}
 
+	var pagination struct {
+		Page  int `form:"page"`
+		Limit int `form:"limit"`
+	}
+
+	if err := c.ShouldBindQuery(&pagination); err != nil {
+		h.logger.Warn("Failed to bind pagination params, using defaults", logger.Fields{"error": err})
+	}
+
+	if pagination.Page < 1 {
+		pagination.Page = 1
+	}
+	if pagination.Limit < 1 {
+		pagination.Limit = 50
+	}
+	if pagination.Limit > 200 {
+		pagination.Limit = 200
+	}
+
 	scan, err := h.scanService.GetScanByUUID(scanID)
 	if err != nil {
 		h.logger.Error("Failed to load scan for subdomains", logger.Fields{"error": err, "scan_id": scanID})
@@ -197,7 +216,42 @@ func (h *ScanWebHandler) SubdomainsPage(c *gin.Context) {
 		return
 	}
 
-	if err := templates.ScanSubdomainsPage(scan).Render(c, c.Writer); err != nil {
+	// Paginate subdomains
+	totalSubdomains := len(scan.Subdomains)
+	offset := (pagination.Page - 1) * pagination.Limit
+	end := offset + pagination.Limit
+
+	if offset > totalSubdomains {
+		offset = totalSubdomains
+	}
+	if end > totalSubdomains {
+		end = totalSubdomains
+	}
+
+	paginatedSubdomains := scan.Subdomains[offset:end]
+
+	totalPages := totalSubdomains / pagination.Limit
+	if totalSubdomains%pagination.Limit != 0 {
+		totalPages++
+	}
+
+	paginationMeta := templates.PaginationInfo{
+		Page:       pagination.Page,
+		Limit:      pagination.Limit,
+		Total:      totalSubdomains,
+		TotalPages: totalPages,
+		HasNext:    pagination.Page < totalPages,
+		HasPrev:    pagination.Page > 1,
+	}
+
+	h.logger.Info("Rendering SubdomainsPage", logger.Fields{
+		"scan_id":          scanID,
+		"subdomain_count":  len(paginatedSubdomains),
+		"total_subdomains": totalSubdomains,
+		"page":             pagination.Page,
+	})
+
+	if err := templates.ScanSubdomainsPage(scan, paginatedSubdomains, paginationMeta).Render(c, c.Writer); err != nil {
 		h.logger.Error("Failed to render subdomains page", logger.Fields{"error": err, "scan_id": scanID})
 		c.Status(http.StatusInternalServerError)
 		return

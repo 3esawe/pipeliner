@@ -18,6 +18,7 @@ func InitScanRoutes(router *gin.RouterGroup, db *gorm.DB) {
 	{
 		scanRoutes.POST("", handlers.StartScan)
 		scanRoutes.GET("/:id", handlers.GetScanByUUID)
+		scanRoutes.GET("/:id/subdomains", handlers.GetScanSubdomains)
 		scanRoutes.GET("", handlers.ListScans)
 		scanRoutes.DELETE("/:id", handlers.DeleteScan)
 	}

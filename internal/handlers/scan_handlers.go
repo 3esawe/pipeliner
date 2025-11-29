@@ -141,3 +141,81 @@ func (h *ScanHandler) GetQueueStatus(c *gin.Context) {
 		"available":      maxConcurrent - running,
 	})
 }
+
+func (h *ScanHandler) GetScanSubdomains(c *gin.Context) {
+	scanID := c.Param("id")
+	if scanID == "" {
+		h.logger.Error("Scan ID missing in subdomains request")
+		c.JSON(400, gin.H{"error": "Scan ID is required"})
+		return
+	}
+
+	var pagination PaginationRequest
+
+	if err := c.ShouldBindQuery(&pagination); err != nil {
+		h.logger.Warn("Failed to bind pagination params, using defaults", logger.Fields{"error": err})
+	}
+
+	if pagination.Page < 1 {
+		pagination.Page = 1
+	}
+	if pagination.Limit < 1 {
+		pagination.Limit = 50
+	}
+	if pagination.Limit > 200 {
+		pagination.Limit = 200
+	}
+
+	scan, err := h.scanService.GetScanByUUID(scanID)
+	if err != nil {
+		if errors.Is(err, services.ErrScanNotFound) {
+			h.logger.Warn("Scan not found", logger.Fields{"scan_id": scanID})
+			c.JSON(404, gin.H{"error": "Scan not found"})
+			return
+		}
+		h.logger.Error("Failed to get scan:", logger.Fields{"error": err})
+		c.JSON(500, gin.H{"error": "Failed to get scan"})
+		return
+	}
+
+	if scan == nil {
+		h.logger.Error("Scan not found", logger.Fields{"scan_id": scanID})
+		c.JSON(404, gin.H{"error": "Scan not found"})
+		return
+	}
+
+	// Paginate subdomains
+	totalSubdomains := len(scan.Subdomains)
+	offset := (pagination.Page - 1) * pagination.Limit
+	end := offset + pagination.Limit
+
+	if offset > totalSubdomains {
+		offset = totalSubdomains
+	}
+	if end > totalSubdomains {
+		end = totalSubdomains
+	}
+
+	paginatedSubdomains := scan.Subdomains[offset:end]
+
+	totalPages := totalSubdomains / pagination.Limit
+	if totalSubdomains%pagination.Limit != 0 {
+		totalPages++
+	}
+
+	response := gin.H{
+		"scan_id":    scan.UUID,
+		"domain":     scan.Domain,
+		"subdomains": paginatedSubdomains,
+		"pagination": PaginationMeta{
+			Page:       pagination.Page,
+			Limit:      pagination.Limit,
+			Total:      totalSubdomains,
+			TotalPages: totalPages,
+			HasNext:    pagination.Page < totalPages,
+			HasPrev:    pagination.Page > 1,
+		},
+	}
+
+	c.JSON(200, response)
+}

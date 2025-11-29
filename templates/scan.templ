@@ -896,7 +896,7 @@ templ ScanScreenshotsPage(scan *models.Scan, screenshotPaths []string) {
 	}
 }
 
-templ ScanSubdomainsPage(scan *models.Scan) {
+templ ScanSubdomainsPage(scan *models.Scan, subdomains []models.Subdomain, pagination PaginationInfo) {
 	@Base("Subdomains") {
 		<div class="container mx-auto p-6">
 			<div class="mb-8">
@@ -905,7 +905,7 @@ templ ScanSubdomainsPage(scan *models.Scan) {
 						<h1 class="text-3xl font-bold text-gray-900 mb-2">Discovered Subdomains</h1>
 						<p class="text-gray-600">
 							Scan <span class="font-mono">{ scan.UUID[:8] }...</span> • { scan.Domain } • 
-							<span class="font-semibold">{ fmt.Sprintf("%d subdomains", len(scan.Subdomains)) }</span>
+							<span class="font-semibold">{ fmt.Sprintf("%d subdomains total", len(scan.Subdomains)) }</span>
 						</p>
 					</div>
 					<div class="flex gap-3">
@@ -962,10 +962,10 @@ templ ScanSubdomainsPage(scan *models.Scan) {
 								</tr>
 							</thead>
 							<tbody class="bg-white divide-y divide-gray-200">
-								for idx, subdomain := range scan.Subdomains {
+								for idx, subdomain := range subdomains {
 									<tr class="hover:bg-gray-50 transition-colors">
 										<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-											{ fmt.Sprintf("%d", idx+1) }
+											{ fmt.Sprintf("%d", (pagination.Page-1)*pagination.Limit+idx+1) }
 										</td>
 										<td class="px-6 py-4 whitespace-nowrap">
 											<div class="flex items-center">
@@ -1082,6 +1082,99 @@ templ ScanSubdomainsPage(scan *models.Scan) {
 						</table>
 					</div>
 				</div>
+				<!-- Pagination Controls -->
+				if pagination.TotalPages > 1 {
+					<div class="bg-gray-50 px-6 py-4 flex items-center justify-between border border-gray-200 rounded-lg mt-6">
+						<div class="flex-1 flex justify-between sm:hidden">
+							<!-- Mobile Pagination -->
+							if pagination.HasPrev {
+								<a
+									href={ templ.URL(fmt.Sprintf("/scans/%s/subdomains?page=%d&limit=%d", scan.UUID, pagination.Page-1, pagination.Limit)) }
+									class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+								>
+									Previous
+								</a>
+							} else {
+								<span class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-400 bg-gray-100 cursor-not-allowed">
+									Previous
+								</span>
+							}
+							if pagination.HasNext {
+								<a
+									href={ templ.URL(fmt.Sprintf("/scans/%s/subdomains?page=%d&limit=%d", scan.UUID, pagination.Page+1, pagination.Limit)) }
+									class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+								>
+									Next
+								</a>
+							} else {
+								<span class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-400 bg-gray-100 cursor-not-allowed">
+									Next
+								</span>
+							}
+						</div>
+						<div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+							<div>
+								<p class="text-sm text-gray-700">
+									Showing
+									<span class="font-medium">{ fmt.Sprintf("%d", (pagination.Page-1)*pagination.Limit+1) }</span>
+									to
+									<span class="font-medium">
+										if pagination.Page*pagination.Limit > pagination.Total {
+											{ fmt.Sprintf("%d", pagination.Total) }
+										} else {
+											{ fmt.Sprintf("%d", pagination.Page*pagination.Limit) }
+										}
+									</span>
+									of
+									<span class="font-medium">{ fmt.Sprintf("%d", pagination.Total) }</span>
+									subdomains
+								</p>
+							</div>
+							<div>
+								<nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+									<!-- Previous Button -->
+									if pagination.HasPrev {
+										<a
+											href={ templ.URL(fmt.Sprintf("/scans/%s/subdomains?page=%d&limit=%d", scan.UUID, pagination.Page-1, pagination.Limit)) }
+											class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+										>
+											<span class="sr-only">Previous</span>
+											<svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+												<path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+											</svg>
+										</a>
+									} else {
+										<span class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-gray-100 text-sm font-medium text-gray-400 cursor-not-allowed">
+											<svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+												<path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+											</svg>
+										</span>
+									}
+									<!-- Page Numbers -->
+									@renderSubdomainPageNumbers(scan.UUID, pagination)
+									<!-- Next Button -->
+									if pagination.HasNext {
+										<a
+											href={ templ.URL(fmt.Sprintf("/scans/%s/subdomains?page=%d&limit=%d", scan.UUID, pagination.Page+1, pagination.Limit)) }
+											class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
+										>
+											<span class="sr-only">Next</span>
+											<svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+												<path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
+											</svg>
+										</a>
+									} else {
+										<span class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-gray-100 text-sm font-medium text-gray-400 cursor-not-allowed">
+											<svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+												<path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
+											</svg>
+										</span>
+									}
+								</nav>
+							</div>
+						</div>
+					</div>
+				}
 				<!-- Summary Stats -->
 				<div class="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
 					<div class="bg-white rounded-lg border border-gray-200 p-4">
