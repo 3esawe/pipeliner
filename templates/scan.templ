@@ -373,6 +373,83 @@ templ renderPageNumbers(pagination PaginationInfo) {
 	}
 }
 
+templ renderSubdomainPageNumbers(scanUUID string, pagination PaginationInfo) {
+	// Show up to 7 page numbers with ellipsis
+	if pagination.TotalPages <= 7 {
+		// Show all pages
+		for i := 1; i <= pagination.TotalPages; i++ {
+			if i == pagination.Page {
+				<span class="relative inline-flex items-center px-4 py-2 border border-blue-500 bg-blue-50 text-sm font-medium text-blue-600">
+					{ fmt.Sprintf("%d", i) }
+				</span>
+			} else {
+				<a
+					href={ templ.URL(fmt.Sprintf("/scans/%s/subdomains?page=%d&limit=%d", scanUUID, i, pagination.Limit)) }
+					class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
+				>
+					{ fmt.Sprintf("%d", i) }
+				</a>
+			}
+		}
+	} else {
+		// Show first page
+		if pagination.Page == 1 {
+			<span class="relative inline-flex items-center px-4 py-2 border border-blue-500 bg-blue-50 text-sm font-medium text-blue-600">
+				1
+			</span>
+		} else {
+			<a
+				href={ templ.URL(fmt.Sprintf("/scans/%s/subdomains?page=1&limit=%d", scanUUID, pagination.Limit)) }
+				class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
+			>
+				1
+			</a>
+		}
+		// Ellipsis or pages near current page
+		if pagination.Page > 3 {
+			<span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
+				...
+			</span>
+		}
+		// Middle pages
+		for i := pagination.Page - 1; i <= pagination.Page + 1; i++ {
+			if i > 1 && i < pagination.TotalPages {
+				if i == pagination.Page {
+					<span class="relative inline-flex items-center px-4 py-2 border border-blue-500 bg-blue-50 text-sm font-medium text-blue-600">
+						{ fmt.Sprintf("%d", i) }
+					</span>
+				} else {
+					<a
+						href={ templ.URL(fmt.Sprintf("/scans/%s/subdomains?page=%d&limit=%d", scanUUID, i, pagination.Limit)) }
+						class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
+					>
+						{ fmt.Sprintf("%d", i) }
+					</a>
+				}
+			}
+		}
+		// Ellipsis before last page
+		if pagination.Page < pagination.TotalPages - 2 {
+			<span class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
+				...
+			</span>
+		}
+		// Show last page
+		if pagination.Page == pagination.TotalPages {
+			<span class="relative inline-flex items-center px-4 py-2 border border-blue-500 bg-blue-50 text-sm font-medium text-blue-600">
+				{ fmt.Sprintf("%d", pagination.TotalPages) }
+			</span>
+		} else {
+			<a
+				href={ templ.URL(fmt.Sprintf("/scans/%s/subdomains?page=%d&limit=%d", scanUUID, pagination.TotalPages, pagination.Limit)) }
+				class="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
+			>
+				{ fmt.Sprintf("%d", pagination.TotalPages) }
+			</a>
+		}
+	}
+}
+
 templ statusBadge(status string) {
 	switch status {
 		case "pending":
